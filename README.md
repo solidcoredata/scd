@@ -71,4 +71,17 @@ they can also be replaced with alternate implementations.
  * Data is sent from the backend to the frontend using a
    standard table set based format.
  * Changes are encoded as row deltas.
+ * Backend servers should be micro-service friendly
+   and easily hostable on k8s.
+
+### Non-goals
+
+ * Don't try to make development faster. This might happen,
+   but only as a side effect.
+ * Don't try to change how development is done. Use git, standard SQL,
+   allow to use standard UI libraries and components.
+ * Do not try to control everything. Assume each application will have
+   some custom controls and screens. Assume application may need
+   to provide different backend servers or wrap an existing authentication
+   or reporting server.
 
