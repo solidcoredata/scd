@@ -33,7 +33,7 @@ In short, Solid Core Data aims to:
    well defined interface.
  * Implement a way to handle SQL queries.
 
-## Design and Configuration
+## High Level Design
 
 ### Frontend
 
@@ -73,15 +73,73 @@ they can also be replaced with alternate implementations.
  * Changes are encoded as row deltas.
  * Backend servers should be micro-service friendly
    and easily hostable on k8s.
+ * Authentication server will support FIDO U2F out of the box.
+ * When developing an application, the application needs to satisfy
+   one or more interfaces to be run under the framework. The framework
+   itself can be used as a binary blob and never touched or compiled
+   during application development.
 
 ### Non-goals
 
  * Don't try to make development faster. This might happen,
    but only as a side effect.
  * Don't try to change how development is done. Use git, standard SQL,
-   allow to use standard UI libraries and components.
+   allow the use standard UI libraries and components.
  * Do not try to control everything. Assume each application will have
    some custom controls and screens. Assume application may need
    to provide different backend servers or wrap an existing authentication
    or reporting server.
+ * Do not assume as specific runtime environment. Have a way to run under
+   Windows IIS as well as Linux k8s.
+
+## Project Roadmap
+
+The project will aim for three phases:
+
+ 1. Build MVP (v0.5)
+ 2. Build out optional components (v0.10)
+ 3. Use framework in several projects and adjust and tweak (v0.11 to v1.0)
+
+Before the project is used in a real business project, create an official business
+for solid core data and assign copyright to it with appropriate CLAs.
+Put up a website at solidcoredata.com for the business and solidcoredata.org for
+the project. The business will at least initially be to separate out personal
+interests from project interests and provide businesses using the framework
+an official point of contact.
+
+Present in a MVP release:
+
+ * HTTP server
+ * UI server
+  - With a performant search list detail component and fields.
+ * Query server
+ * Example application server
+ * Simple authentication and authorization server
+
+Building out optional components will include:
+
+ * Make a configuration editor
+ * Report server
+ * More function in authentication and authorization server
+ * SQL to SQL Query server
+ * More UI Components
+
+Useing the framework and various tweaks is TBD.
+
+## Implementation
+
+### License
+
+Source code files should not list author's names directly.
+Each file should have a standard header:
+```
+// Copyright 2017 The Solid Core Data Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+```
+
+At the moment copyright is not assigned. However before external contributions
+are accepted or the framework used in production, a business must be formed
+and copyright assigned directly to the project. Solid Core Data project will
+be made distinct from the business name.
 
