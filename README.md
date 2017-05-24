@@ -1,7 +1,7 @@
 # Solid Core Data Design
 
 Solid Core Data is a framework designed to remove some of the
-repetative tasks associated with building a new SQL backed line
+repetitive tasks associated with building a new SQL backed line
 of business application. This framework is not intended
 to directly dictate or improve UI or SQL. This framework is 
 intended to provide default ways to authenticate and authorize
@@ -26,7 +26,7 @@ In short, Solid Core Data aims to:
 
  * Choose or create UI components that work will with large
    data sets.
- * Use data marshalling techniques that can be effectivly
+ * Use data marshalling techniques that can be effectively
    reused.
  * Implement an authentication and authorization component
    that can be used out of the box or replaced with a
@@ -48,7 +48,7 @@ to bind to and what type of field component to use.
 An application can still create custom screen types and
 components. A component can be created using most any
 UI platform. The only criteria is that it satisfies
-a perticular interface and takes a configuration
+a particular interface and takes a configuration
 when creating it.
 
 ### Backend
@@ -124,13 +124,13 @@ Building out optional components will include:
  * SQL to SQL Query server
  * More UI Components
 
-Useing the framework and various tweaks is TBD.
+Using the framework and various tweaks is TBD.
 
 ## Implementation
 
 ### License
 
-Source code files should not list author's names directly.
+Source code files should not list authors names directly.
 Each file should have a standard header:
 ```
 // Copyright 2017 The Solid Core Data Authors. All rights reserved.
