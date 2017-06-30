@@ -119,8 +119,29 @@ type StdOutConfig struct {
 		},
 		{
 			Kind: "menuscreen",
-			Schema: ??,
-		}
+			Schema: {
+				Types: [
+					{
+						Name: "Menu",
+						Members: [
+							{Type: "Text", Name: "Name"},
+							{Type: "[]Menu", Name: "Menu", Nullable: true}
+							{Type: "Text", Name: "Run", Nullable: true}
+						],
+					},
+					{
+						Name: "LocationEnum",
+						Values: ["Top", "Left"],
+					}
+				],
+				Root: [
+					{Name: "Menu", Type: "Menu"},
+					{Name: "MenuProperties", Type: [
+						{Name: "Location", Type: "LocationEnum"},
+					]},
+				],
+			},
+		},
 	],
 }
 
@@ -188,3 +209,49 @@ HTTP receives request.
 	 * request info to attach to context
 	 * route based on rules / code
 	 * 
+
+### Client Request Life-cycle:
+
+ * GET / RETURN HTML with common loader script.
+ * Script sees URL State and requests that state from the server.
+ * Server returns a list component configurations. Each configuration includes the component URL (which serves as the component unique ID).
+   If the component is not found it may be loaded from the given URL.
+ * The client applies all of the components sent back along with the configurations requested.
+ * It would be ideal to be able to "nest" components logically, but still maintain a "context" bucket and allow for deep linking.
+ * A component will manage its own internal state (values set, etc) but still need to expose them to allow them to be settable for deep links.
+   - I'm not sure this is possible or reasonable.
+
+### HTTP Request Life-cycle:
+
+ * Client sends request to server.
+ * HTTP Server receives request.
+ * HTTP Server takes credential token(s) and send the token(s) to the Authentication Server to establish authentication, roles, and login state.
+   The result is attached to the request context.
+   - Login state (Logged Out, U2F Login Wait, Must Change Password, Logged In)
+   - Elevated state (Normal, Elevated Login)
+ * HTTP Server sends entire request with context to application back-end, switching off of URL and Login State.
+ * ...
+ 
+### Thinking
+
+ * Not all changes to the UI should go through the server.
+ * Components may opt to provide either a linked component or a linked call that will provide a component.
+ * It is the responsibility of the parent component to attach a linked component to the DOM / Context Data.
+ * Thus the initial loader is actually just a really basic component that bootstraps other components.
+
+ * There is a link between UI hierarchy, UI Layout, Data Context, and deep linking state.
+
+Application Endpoints
+
+ * /api/authstate # Returns the current LoginState value. Useful for cache breaking.
+ * /api/proc
+ * /api/ui
+ * /api/delta
+ * /api/query
+ * /api/lookup
+ * /api/error # Errors encounted while on the UI.
+ * /api/login
+ * /api/logoff
+
+ * The Delta should be able to send a Validate request that the server can check in real-time.
+
