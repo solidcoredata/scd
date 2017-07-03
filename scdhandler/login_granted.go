@@ -35,6 +35,7 @@ func (h *LoginGrantedHandler) Init() *LoginGrantedHandler {
 			MaxAge: -1,
 		})
 	}))
+	// TODO(kardianos): Add in additional API endpoints: proc, ui, delta, query, lookup, error.
 	h.r = r
 	return h
 }
@@ -74,7 +75,13 @@ function logout() {
 	}
 	req.onload = function(ev) {
 		if(ev.target.status === 200) {
-			location.reload();
+			location.pathname = "/";
+			return;
+		}
+		// User may be already logged out. This may result in the
+		// logout endpoint from being available.
+		if(ev.target.status === 404) {
+			location.pathname = "/";
 			return;
 		}
 		alert("Unknown error, application may be down.");

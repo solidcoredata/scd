@@ -7,6 +7,18 @@ import (
 	"github.com/gowww/router"
 )
 
+// TODO(kardianos): define an interface that allows returning static assets and can handle dynamic or static page requests.
+/*
+	Provide a list of static assets.
+	Optionally map the static assets to a custom path.
+	A custom path may be "/" to serve a static root HTTP page.
+
+	Provide a list of dynamic handlers and their mount points.
+	A custom path for a dynamic handler may be "/" to serve a dynamic root HTTP page.
+
+	Use same interface for logged in state as well.
+*/
+
 type LoginNoneHandler struct {
 	Session SessionManager
 
@@ -98,6 +110,7 @@ usernameInput.addEventListener("keypress", function(ev) {
 	}
 	passwordInput.select();
 });
+usernameInput.select();
 
 function message(text) {
 	messageEl.textContent = text;
