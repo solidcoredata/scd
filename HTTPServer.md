@@ -243,15 +243,28 @@ HTTP receives request.
 
 Application Endpoints
 
- * /api/authstate # Returns the current LoginState value. Useful for cache breaking.
  * /api/proc
  * /api/ui
  * /api/delta
  * /api/query
  * /api/lookup
- * /api/error # Errors encounted while on the UI.
+ * /api/error # Errors encountered while on the UI.
  * /api/login
  * /api/logoff
 
  * The Delta should be able to send a Validate request that the server can check in real-time.
 
+ ### Components that build on each other
+
+  * Router
+    - Login API, static assets.
+      - Skinnable default presentation. Basic UI, settable name and logo. Optional Reset Password link.
+    - Query, Delta, Lookup, Proc APIs. Static assets. Component loader API. Logout and Elevate APIs.
+      - Default application loader to bootstrap core components.
+	  - Application frame / sreen menu.
+	    - Components such as Grid and Form Groups.
+	    - Skinnable compositions.
+
+Sane defaults for business applications. But applications can still replace stacks as required.
+
+No inheritance, only configuration and systems that use other systems.
