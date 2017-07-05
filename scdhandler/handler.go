@@ -11,12 +11,17 @@ package scdhandler
 
 import (
 	"context"
+	"fmt"
+	"hash"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
+	"encoding/base64"
+
 	"github.com/gowww/fatal"
+	"github.com/minio/blake2b-simd"
 )
 
 /*
@@ -39,12 +44,14 @@ type LoginState int64
 // Multiple LoginRoles may be assigned to a request.
 type LoginRole int64
 
+//go:generate stringer -type=LoginState
+
 // Known login states.
 const (
 	LoginNone           LoginState = 0
 	LoginU2F            LoginState = 1
 	LoginChangePassword LoginState = 2
-	LoginGranted        LoginState = 100
+	LoginGranted        LoginState = 3
 )
 
 // AppHandler provides sufficent information to route incomming application
@@ -63,7 +70,7 @@ type AppHandler interface {
 type LoginStateRouter map[LoginState]AppHandler
 
 // URLRouter links an incomming URL Host with a LoginStateRouter.
-type URLRouter map[string]LoginStateRouter
+type HostRouter map[string]LoginStateRouter
 
 // RequestAuth holds the authentication state for a request.
 type RequestAuth struct {
@@ -75,12 +82,32 @@ type RequestAuth struct {
 	Email      string
 	GivenName  string // The given (first) name of the user.
 	FamilyName string // The family (last) name of the user.
+
+	// Key to the session cookie token.
+	TokenKey string
 }
 
 // Authenticator provides the authentication to the request.
 type Authenticator interface {
-	RequestAuth(ctx context.Context, token string) (RequestAuth, error)
-	TokenKeyName() string
+	RequestAuth(ctx context.Context, token string) (*RequestAuth, error)
+}
+
+var tokenKeyHMAC = []byte(`solidcoredata`)
+var tokenKeyHasher hash.Hash
+
+func init() {
+	h, err := blake2b.New(&blake2b.Config{
+		Size: 4,
+		Key:  tokenKeyHMAC,
+	})
+	if err != nil {
+		panic("unable to create token key hasher")
+	}
+	tokenKeyHasher = h
+}
+
+func TokenKeyName(host string) string {
+	return strings.TrimRight(base64.RawURLEncoding.EncodeToString(tokenKeyHasher.Sum([]byte(host))), "=")
 }
 
 type SessionManager interface {
@@ -121,7 +148,7 @@ type SessionSigner interface {
 // components isolation.
 type RouteHandler struct {
 	// Router maps the request to a URL and login state.
-	Router URLRouter
+	Router HostRouter
 
 	// Authenticator is sent the token as found in the request cookie.
 	// It is called after detaching the cookie value and before any routing has happened.
@@ -144,6 +171,14 @@ func (h *RouteHandler) Init() *RouteHandler {
 	}
 	// TODO(kardianos): check each application handler to ensure the path prefix all
 	// start and end with a "/".
+	for host, logins := range h.Router {
+		for state, login := range logins {
+			partition, _ := login.URLPartition()
+			if len(partition) == 0 || partition[0] != '/' || partition[len(partition)-1] != '/' {
+				panic(fmt.Errorf(`URL Parition must begin and end with a slash "/" for %q for state %s.`, host, state))
+			}
+		}
+	}
 	return h
 }
 
@@ -156,8 +191,6 @@ func (h *RouteHandler) logf(f string, v ...interface{}) {
 
 const redirectQueryKey = "redirect-to"
 
-// BUG(kardianos): probably need to correct slash handling for prefix.
-
 func (h *RouteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Get values of credential tokens from request.
 	// Get URL.
@@ -165,8 +198,10 @@ func (h *RouteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Attach result to request context.
 	// Send request to correct application server.
 
-	rs := RequestAuth{}
-	if c, err := r.Cookie(h.Authenticator.TokenKeyName()); err == nil {
+	tokenKey := TokenKeyName(r.URL.Host)
+
+	rs := &RequestAuth{}
+	if c, err := r.Cookie(tokenKey); err == nil {
 		rs, err = h.Authenticator.RequestAuth(r.Context(), c.Value)
 		if err != nil {
 			h.logf("scdhandler: unable to check auth %v", err)
@@ -174,6 +209,8 @@ func (h *RouteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	rs.TokenKey = tokenKey
+
 	urlrouter, ok := h.Router[r.URL.Host]
 	if !ok {
 		h.logf("host 404: host=%q\n", r.URL.String())
@@ -227,19 +264,20 @@ func (h *RouteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	r = r.WithContext(NewContext(r.Context(), rs))
+	r = r.WithContext(AuthNewContext(r.Context(), rs))
 	r.URL.Path = strings.TrimPrefix(r.URL.Path, prefix[:len(prefix)-1])
 	next.ServeHTTP(w, r)
 }
 
 type requestAuthKey struct{}
 
-// NewContext returns a child context with the RequestAuth as a value.
-func NewContext(ctx context.Context, rs RequestAuth) context.Context {
+// AuthNewContext returns a child context with the RequestAuth as a value.
+func AuthNewContext(ctx context.Context, rs *RequestAuth) context.Context {
 	return context.WithValue(ctx, requestAuthKey{}, rs)
 }
 
-func FromContext(ctx context.Context) (rs RequestAuth, found bool) {
-	rs, found = ctx.Value(requestAuthKey{}).(RequestAuth)
+// AuthFromContext returns the RequestAuth found in the context values if found.
+func AuthFromContext(ctx context.Context) (rs *RequestAuth, found bool) {
+	rs, found = ctx.Value(requestAuthKey{}).(*RequestAuth)
 	return rs, found
 }

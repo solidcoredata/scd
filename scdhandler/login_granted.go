@@ -18,7 +18,11 @@ func (h *LoginGrantedHandler) Init() *LoginGrantedHandler {
 		w.Write(loginGrantedHTML)
 	}))
 	r.Post("/api/logout", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		c, err := r.Cookie(h.Session.TokenKeyName())
+		rs, found := AuthFromContext(r.Context())
+		if !found {
+			panic("no auth context")
+		}
+		c, err := r.Cookie(rs.TokenKey)
 		if err != nil {
 			// If there is no cookie, user may already be logged out.
 			return
@@ -30,7 +34,7 @@ func (h *LoginGrantedHandler) Init() *LoginGrantedHandler {
 		}
 		// TODO(kardianos): set exire time, secure=true, strict origin.
 		http.SetCookie(w, &http.Cookie{
-			Name:   h.Session.TokenKeyName(),
+			Name:   rs.TokenKey,
 			Path:   "/",
 			MaxAge: -1,
 		})

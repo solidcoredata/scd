@@ -56,8 +56,6 @@ type MemorySession struct {
 
 // AuthenticateMemory provides an in-memory authenticator for request authentication.
 type AuthenticateMemory struct {
-	KeyName string
-
 	lk sync.RWMutex
 
 	// UserSetup maps Identity to the user information.
@@ -74,15 +72,12 @@ func (am *AuthenticateMemory) Init() *AuthenticateMemory {
 	if am.UserSetup == nil {
 		panic("no users")
 	}
-	if am.KeyName == "" {
-		panic("no token key")
-	}
 	return am
 }
 
 // RequestAuth implements the scdhandler.Authenticator.
-func (am *AuthenticateMemory) RequestAuth(ctx context.Context, token string) (RequestAuth, error) {
-	ra := RequestAuth{}
+func (am *AuthenticateMemory) RequestAuth(ctx context.Context, token string) (*RequestAuth, error) {
+	ra := &RequestAuth{}
 	am.lk.RLock()
 	defer am.lk.RUnlock()
 
@@ -102,11 +97,6 @@ func (am *AuthenticateMemory) RequestAuth(ctx context.Context, token string) (Re
 	ra.FamilyName = u.FamilyName
 	ra.Roles = u.Roles
 	return ra, nil
-}
-
-// TokenKeyName returns the cookie key name.
-func (am *AuthenticateMemory) TokenKeyName() string {
-	return am.KeyName
 }
 
 func (am *AuthenticateMemory) random(length int) (tokenValue []byte, err error) {
@@ -147,7 +137,7 @@ func (am *AuthenticateMemory) Login(ctx context.Context, identity, password stri
 	var t *MemorySession
 
 	for i := 0; i < 5; i++ {
-		tokenBytes, err := am.random(45)
+		tokenBytes, err := am.random(160)
 		if err != nil {
 			return "", err
 		}

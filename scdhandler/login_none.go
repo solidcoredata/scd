@@ -41,9 +41,14 @@ func (h *LoginNoneHandler) Init() *LoginNoneHandler {
 			http.Error(w, "bad login", http.StatusForbidden)
 			return
 		}
+		rs, found := AuthFromContext(r.Context())
+		if !found {
+			http.Error(w, "unable to set cookie", http.StatusInternalServerError)
+			return
+		}
 		// TODO(kardianos): set exire time, secure=true, strict origin.
 		http.SetCookie(w, &http.Cookie{
-			Name:     h.Session.TokenKeyName(),
+			Name:     rs.TokenKey,
 			Value:    token,
 			Path:     "/",
 			HttpOnly: true,
