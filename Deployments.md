@@ -34,5 +34,5 @@ following:
     App A's internal service.
  2. Configure App A to use App B's component that should be exposed.
  3. If custom skinning is needed, an encapsulating component may be
-    designed for App A that uses App B's compontent service.
+    designed for App B that uses App A's compontent service.
 
