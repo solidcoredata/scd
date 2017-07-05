@@ -252,9 +252,9 @@ Application Endpoints
  * /api/login
  * /api/logoff
 
- * The Delta should be able to send a Validate request that the server can check in real-time.
+The Delta should be able to send a Validate request that the server can check in real-time.
 
- ### Components that build on each other
+### Components that build on each other
 
   * Router
     - Login API, static assets.
