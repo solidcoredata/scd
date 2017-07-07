@@ -1,24 +1,27 @@
-package scdhandler
+package auth_memory
 
 import (
 	"context"
 	crand "crypto/rand"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
+
+	"github.com/solidcoredata/scdhttp/scdhandler"
 )
 
 // BUG(kardianos): normalize identity and passwords.
 // BUG(kardianos): hash and salt passwords.
 // BUG(kardianos): compute or set next login state.
 
-var _ Authenticator = &AuthenticateMemory{}
-var _ SessionManager = &AuthenticateMemory{}
-var _ SessionManager = &AuthenticateMemory{}
-var _ SessionElevator = &AuthenticateMemory{}
+var _ scdhandler.Authenticator = &AuthenticateMemory{}
+var _ scdhandler.SessionManager = &AuthenticateMemory{}
+var _ scdhandler.SessionManager = &AuthenticateMemory{}
+var _ scdhandler.SessionElevator = &AuthenticateMemory{}
 
-// var _ SessionSigner = &AuthenticateMemory{}
+// var _ scdhandler.SessionSigner = &AuthenticateMemory{}
 
 // MemoryUser holds information in an easy way to setup.
 //
@@ -34,7 +37,7 @@ type MemoryUser struct {
 	PasswordMethod     int64
 	ForceResetPassword bool
 
-	Roles []LoginRole
+	Roles []scdhandler.LoginRole
 }
 
 type MemoryDevices struct {
@@ -47,7 +50,7 @@ type MemoryDevices struct {
 type MemorySession struct {
 	Identity   string
 	Token      string
-	LoginState LoginState
+	LoginState scdhandler.LoginState
 
 	ElevatedUntil time.Time
 	TimeExpire    time.Time
@@ -65,19 +68,19 @@ type AuthenticateMemory struct {
 	Tokens map[string]*MemorySession
 }
 
-func (am *AuthenticateMemory) Init() *AuthenticateMemory {
+func (am *AuthenticateMemory) Init(ctx context.Context) error {
 	if am.Tokens == nil {
 		am.Tokens = make(map[string]*MemorySession, 50)
 	}
 	if am.UserSetup == nil {
-		panic("no users")
+		return fmt.Errorf("no users")
 	}
-	return am
+	return nil
 }
 
 // RequestAuth implements the scdhandler.Authenticator.
-func (am *AuthenticateMemory) RequestAuth(ctx context.Context, token string) (*RequestAuth, error) {
-	ra := &RequestAuth{}
+func (am *AuthenticateMemory) RequestAuth(ctx context.Context, token string) (*scdhandler.RequestAuth, error) {
+	ra := &scdhandler.RequestAuth{}
 	am.lk.RLock()
 	defer am.lk.RUnlock()
 
@@ -150,7 +153,7 @@ func (am *AuthenticateMemory) Login(ctx context.Context, identity, password stri
 		t = &MemorySession{
 			Identity:    identity,
 			Token:       tokenValue,
-			LoginState:  LoginGranted, // TODO(kardianos): compute as required.
+			LoginState:  scdhandler.LoginGranted, // TODO(kardianos): compute as required.
 			TimeExpire:  time.Now().Add(28 * 24 * time.Hour),
 			TimeLastHit: time.Now(),
 		}

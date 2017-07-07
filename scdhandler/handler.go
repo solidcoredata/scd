@@ -12,16 +12,11 @@ package scdhandler
 import (
 	"context"
 	"fmt"
-	"hash"
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
-
-	"encoding/base64"
 
 	"github.com/gowww/fatal"
-	"github.com/minio/blake2b-simd"
 )
 
 /*
@@ -64,84 +59,22 @@ type AppHandler interface {
 	// should be removed path and if the prefix matches, redirected to.
 	// The prefix should start and end with a slash "/".
 	URLPartition() (prefix string, consumeRedirect bool)
+
+	// Init is called after the application is loaded.
+	Init(context.Context) error
 }
 
 // LoginStateRouter links login states with a routable handler.
-type LoginStateRouter map[LoginState]AppHandler
+type LoginStateRouter struct {
+	State map[LoginState]AppHandler
+
+	// Authenticator is sent the token as found in the request cookie.
+	// It is called after detaching the cookie value and before any routing has happened.
+	Authenticator Authenticator
+}
 
 // URLRouter links an incomming URL Host with a LoginStateRouter.
 type HostRouter map[string]LoginStateRouter
-
-// RequestAuth holds the authentication state for a request.
-type RequestAuth struct {
-	LoginState    LoginState
-	Roles         []LoginRole
-	ElevatedUntil time.Time
-
-	Identity   string // Unique name each application can use to link to the internal user.
-	Email      string
-	GivenName  string // The given (first) name of the user.
-	FamilyName string // The family (last) name of the user.
-
-	// Key to the session cookie token.
-	TokenKey string
-}
-
-// Authenticator provides the authentication to the request.
-type Authenticator interface {
-	RequestAuth(ctx context.Context, token string) (*RequestAuth, error)
-}
-
-var tokenKeyHMAC = []byte(`solidcoredata`)
-var tokenKeyHasher hash.Hash
-
-func init() {
-	h, err := blake2b.New(&blake2b.Config{
-		Size: 4,
-		Key:  tokenKeyHMAC,
-	})
-	if err != nil {
-		panic("unable to create token key hasher")
-	}
-	tokenKeyHasher = h
-}
-
-func TokenKeyName(host string) string {
-	return strings.TrimRight(base64.RawURLEncoding.EncodeToString(tokenKeyHasher.Sum([]byte(host))), "=")
-}
-
-type SessionManager interface {
-	Authenticator
-
-	Login(ctx context.Context, identity, password string) (tokenValue string, err error)
-	Logout(ctx context.Context, sessionToken string) error
-	LogoutIdentity(ctx context.Context, identity string) error
-}
-
-type SessionPasswordChanger interface {
-	// NewPassword chooses a new password for the given identity.
-	// The identity must be notified of this change.
-	NewPassword(ctx context.Context, identity string) error
-
-	// ResetPassword changes the identity's password. If the login state is
-	// Change Password, thenn currentPassword is ignored. Otherwise the currentPassword is checked
-	// against the current stored password and if valid newPassword is set.
-	ResetPassword(ctx context.Context, sessionToken, currentPassword, newPassword string) error
-}
-
-type SessionElevator interface {
-	SessionManager
-
-	Elevate(ctx context.Context, sessionToken, password string, until time.Time) error
-	UnElevate(ctx context.Context, sessionToken string) error
-}
-
-type SessionSigner interface {
-	SessionManager
-
-	SignRequest(ctx context.Context, sessionToken string) ([]byte, error)
-	SignResponse(ctx context.Context, sessionToken string, response []byte) error
-}
 
 // RouteHandler routes requests after coming in from the edge of the system.
 // It ensures requests are authenticated to any sensitive areas. It gives downstream
@@ -150,10 +83,6 @@ type RouteHandler struct {
 	// Router maps the request to a URL and login state.
 	Router HostRouter
 
-	// Authenticator is sent the token as found in the request cookie.
-	// It is called after detaching the cookie value and before any routing has happened.
-	Authenticator Authenticator
-
 	// Loggerf allows feedback to the system.
 	// TODO(kardianos): probably not the final interface.
 	Loggerf func(f string, v ...interface{})
@@ -161,7 +90,7 @@ type RouteHandler struct {
 	recover *fatal.Options
 }
 
-func (h *RouteHandler) Init() *RouteHandler {
+func (h *RouteHandler) Init(ctx context.Context) error {
 	h.recover = &fatal.Options{
 		RecoverHandler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			v := fatal.Error(r)
@@ -169,17 +98,38 @@ func (h *RouteHandler) Init() *RouteHandler {
 			http.Error(w, "panic", http.StatusInternalServerError)
 		}),
 	}
-	// TODO(kardianos): check each application handler to ensure the path prefix all
+
+	uniqueAuth := make(map[Authenticator]bool, len(h.Router))
+	uniqueApp := make(map[AppHandler]bool, len(h.Router)*4)
+
+	// Check each application handler to ensure the path prefix all
 	// start and end with a "/".
+	//
+	// Add each authenticator and app to a unique map before calling Init on each.
 	for host, logins := range h.Router {
-		for state, login := range logins {
+		for state, login := range logins.State {
 			partition, _ := login.URLPartition()
 			if len(partition) == 0 || partition[0] != '/' || partition[len(partition)-1] != '/' {
-				panic(fmt.Errorf(`URL Parition must begin and end with a slash "/" for %q for state %s.`, host, state))
+				return fmt.Errorf(`URL Parition must begin and end with a slash "/" for %q for state %s.`, host, state)
 			}
+			uniqueApp[login] = true
+		}
+		uniqueAuth[logins.Authenticator] = true
+	}
+	for auth := range uniqueAuth {
+		err := auth.Init(ctx)
+		if err != nil {
+			return err
 		}
 	}
-	return h
+	for app := range uniqueApp {
+		err := app.Init(ctx)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (h *RouteHandler) logf(f string, v ...interface{}) {
@@ -198,11 +148,18 @@ func (h *RouteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Attach result to request context.
 	// Send request to correct application server.
 
+	urlrouter, ok := h.Router[r.URL.Host]
+	if !ok {
+		h.logf("host 404: host=%q\n", r.URL.String())
+		http.Error(w, "host 404", http.StatusNotFound)
+		return
+	}
+
 	tokenKey := TokenKeyName(r.URL.Host)
 
 	rs := &RequestAuth{}
 	if c, err := r.Cookie(tokenKey); err == nil {
-		rs, err = h.Authenticator.RequestAuth(r.Context(), c.Value)
+		rs, err = urlrouter.Authenticator.RequestAuth(r.Context(), c.Value)
 		if err != nil {
 			h.logf("scdhandler: unable to check auth %v", err)
 			http.Error(w, "failed to check auth", http.StatusInternalServerError)
@@ -211,13 +168,7 @@ func (h *RouteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	rs.TokenKey = tokenKey
 
-	urlrouter, ok := h.Router[r.URL.Host]
-	if !ok {
-		h.logf("host 404: host=%q\n", r.URL.String())
-		http.Error(w, "host 404", http.StatusNotFound)
-		return
-	}
-	next, ok := urlrouter[rs.LoginState]
+	next, ok := urlrouter.State[rs.LoginState]
 	if !ok {
 		http.Error(w, "login state 404", http.StatusNotFound)
 		return
@@ -267,17 +218,4 @@ func (h *RouteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r = r.WithContext(AuthNewContext(r.Context(), rs))
 	r.URL.Path = strings.TrimPrefix(r.URL.Path, prefix[:len(prefix)-1])
 	next.ServeHTTP(w, r)
-}
-
-type requestAuthKey struct{}
-
-// AuthNewContext returns a child context with the RequestAuth as a value.
-func AuthNewContext(ctx context.Context, rs *RequestAuth) context.Context {
-	return context.WithValue(ctx, requestAuthKey{}, rs)
-}
-
-// AuthFromContext returns the RequestAuth found in the context values if found.
-func AuthFromContext(ctx context.Context) (rs *RequestAuth, found bool) {
-	rs, found = ctx.Value(requestAuthKey{}).(*RequestAuth)
-	return rs, found
 }

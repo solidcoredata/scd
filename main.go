@@ -1,24 +1,29 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 
+	"github.com/solidcoredata/scdhttp/app/app_granted_api"
+	"github.com/solidcoredata/scdhttp/app/app_none_api"
+	"github.com/solidcoredata/scdhttp/auth/auth_memory"
 	"github.com/solidcoredata/scdhttp/scdhandler"
 )
 
 func main() {
-	authSession := (&scdhandler.AuthenticateMemory{
-		UserSetup: map[string]*scdhandler.MemoryUser{
-			"user1": &scdhandler.MemoryUser{
+	authSession := &auth_memory.AuthenticateMemory{
+		UserSetup: map[string]*auth_memory.MemoryUser{
+			"user1": &auth_memory.MemoryUser{
 				Identity:   "user1",
 				GivenName:  "Myfirst",
 				FamilyName: "Mylast",
 				Password:   "password1",
 			},
 		},
-	}).Init()
+	}
 	// The authenticator needs to be per URL, NOT per RouteHandler or app.
 	// On second thought, the authentication system should be tied to a single cookie name.
 	// The reason I wanted per URL cookie names is to prevent programs running on different ports
@@ -32,22 +37,32 @@ func main() {
 	// I'd like to be able to support multiple QA environments on the same Host.
 	// I can probably do this by configuring a special LoginGranted handler that
 	// maps paths to nested-applications.
-	h := (&scdhandler.RouteHandler{
+	h := &scdhandler.RouteHandler{
 		Router: scdhandler.HostRouter{
 			"localhost:9786": scdhandler.LoginStateRouter{
-				scdhandler.LoginNone:    (&scdhandler.LoginNoneHandler{Session: authSession}).Init(),
-				scdhandler.LoginGranted: (&scdhandler.LoginGrantedHandler{Session: authSession}).Init(),
+				Authenticator: authSession,
+				State: map[scdhandler.LoginState]scdhandler.AppHandler{
+					scdhandler.LoginNone:    &app_none_api.Handler{Session: authSession},
+					scdhandler.LoginGranted: &app_granted_api.Handler{Session: authSession},
+				},
 			},
 			"localhost:9787": scdhandler.LoginStateRouter{
-				scdhandler.LoginNone:    (&scdhandler.LoginNoneHandler{Session: authSession}).Init(),
-				scdhandler.LoginGranted: (&scdhandler.LoginGrantedHandler{Session: authSession}).Init(),
+				Authenticator: authSession,
+				State: map[scdhandler.LoginState]scdhandler.AppHandler{
+					scdhandler.LoginNone:    &app_none_api.Handler{Session: authSession},
+					scdhandler.LoginGranted: &app_granted_api.Handler{Session: authSession},
+				},
 			},
 		},
-		Authenticator: authSession,
 		Loggerf: func(f string, a ...interface{}) {
-			fmt.Printf(f, a...)
+			log.Printf(f, a...)
 		},
-	}).Init()
+	}
+
+	err := h.Init(context.TODO())
+	if err != nil {
+		log.Fatalf("unable to init route handler: %v", err)
+	}
 
 	for serveon := range h.Router {
 		go func(serveon string) {

@@ -1,24 +1,28 @@
-package scdhandler
+package app_granted_api
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/gowww/router"
+	"github.com/solidcoredata/scdhttp/scdhandler"
 )
 
-type LoginGrantedHandler struct {
-	Session SessionManager
+type Handler struct {
+	Session scdhandler.SessionManager
 
 	r *router.Router
 }
 
-func (h *LoginGrantedHandler) Init() *LoginGrantedHandler {
+var _ scdhandler.AppHandler = &Handler{}
+
+func (h *Handler) Init(ctx context.Context) error {
 	r := router.New()
 	r.Get("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write(loginGrantedHTML)
 	}))
 	r.Post("/api/logout", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		rs, found := AuthFromContext(r.Context())
+		rs, found := scdhandler.AuthFromContext(r.Context())
 		if !found {
 			panic("no auth context")
 		}
@@ -41,10 +45,10 @@ func (h *LoginGrantedHandler) Init() *LoginGrantedHandler {
 	}))
 	// TODO(kardianos): Add in additional API endpoints: proc, ui, delta, query, lookup, error.
 	h.r = r
-	return h
+	return nil
 }
 
-func (h *LoginGrantedHandler) URLPartition() (prefix string, consumeRedirect bool) {
+func (h *Handler) URLPartition() (prefix string, consumeRedirect bool) {
 	prefix = "/app1/"
 	consumeRedirect = true
 	return
@@ -52,7 +56,7 @@ func (h *LoginGrantedHandler) URLPartition() (prefix string, consumeRedirect boo
 
 // ServeHTTP returns an initial page with bootstrap loader.
 // Provide API handlers for additional controls and requests.
-func (h *LoginGrantedHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.r.ServeHTTP(w, r)
 }
 

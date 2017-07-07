@@ -1,10 +1,12 @@
-package scdhandler
+package app_none_api
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
 	"github.com/gowww/router"
+	"github.com/solidcoredata/scdhttp/scdhandler"
 )
 
 // TODO(kardianos): define an interface that allows returning static assets and can handle dynamic or static page requests.
@@ -19,13 +21,15 @@ import (
 	Use same interface for logged in state as well.
 */
 
-type LoginNoneHandler struct {
-	Session SessionManager
+type Handler struct {
+	Session scdhandler.SessionManager
 
 	r *router.Router
 }
 
-func (h *LoginNoneHandler) Init() *LoginNoneHandler {
+var _ scdhandler.AppHandler = &Handler{}
+
+func (h *Handler) Init(ctx context.Context) error {
 	r := router.New()
 	// r.Get("/lib/", nil)
 	r.Get("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -41,7 +45,7 @@ func (h *LoginNoneHandler) Init() *LoginNoneHandler {
 			http.Error(w, "bad login", http.StatusForbidden)
 			return
 		}
-		rs, found := AuthFromContext(r.Context())
+		rs, found := scdhandler.AuthFromContext(r.Context())
 		if !found {
 			http.Error(w, "unable to set cookie", http.StatusInternalServerError)
 			return
@@ -56,17 +60,17 @@ func (h *LoginNoneHandler) Init() *LoginNoneHandler {
 	}))
 
 	h.r = r
-	return h
+	return nil
 }
 
-func (h *LoginNoneHandler) URLPartition() (prefix string, consumeRedirect bool) {
+func (h *Handler) URLPartition() (prefix string, consumeRedirect bool) {
 	prefix = "/login/"
 	consumeRedirect = false
 	return
 }
 
 // ServeHTTP displays a page or resources on GET or processes login on POST.
-func (h *LoginNoneHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.r.ServeHTTP(w, r)
 }
 
