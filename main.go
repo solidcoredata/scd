@@ -42,15 +42,15 @@ func main() {
 			"localhost:9786": scdhandler.LoginStateRouter{
 				Authenticator: authSession,
 				State: map[scdhandler.LoginState]scdhandler.AppHandler{
-					scdhandler.LoginNone:    &app_none_api.Handler{Session: authSession},
-					scdhandler.LoginGranted: &app_granted_api.Handler{Session: authSession},
+					scdhandler.LoginNone:    app_none_api.NewHandler(authSession),
+					scdhandler.LoginGranted: app_granted_api.NewHandler(authSession),
 				},
 			},
 			"localhost:9787": scdhandler.LoginStateRouter{
 				Authenticator: authSession,
 				State: map[scdhandler.LoginState]scdhandler.AppHandler{
-					scdhandler.LoginNone:    &app_none_api.Handler{Session: authSession},
-					scdhandler.LoginGranted: &app_granted_api.Handler{Session: authSession},
+					scdhandler.LoginNone:    app_none_api.NewHandler(authSession),
+					scdhandler.LoginGranted: app_granted_api.NewHandler(authSession),
 				},
 			},
 		},
@@ -67,7 +67,6 @@ func main() {
 	for serveon := range h.Router {
 		go func(serveon string) {
 			err := http.ListenAndServe(serveon, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				r.URL.Host = serveon
 				h.ServeHTTP(w, r)
 			}))
 			if err != nil {

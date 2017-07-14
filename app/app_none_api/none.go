@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/gowww/router"
 	"github.com/solidcoredata/scdhttp/scdhandler"
 )
 
@@ -19,59 +18,80 @@ import (
 	A custom path for a dynamic handler may be "/" to serve a dynamic root HTTP page.
 
 	Use same interface for logged in state as well.
+
+	This handlers methods are uniformally coposed.
+	Handler may provide endpoints or provide endpoints.
+	Both should be declared up front.
+
+	Each component should declare what it uses. (yes)
 */
 
-type Handler struct {
-	Session scdhandler.SessionManager
-
-	r *router.Router
+func NewHandler(session scdhandler.SessionManager) scdhandler.AppHandler {
+	return &handler{
+		ses: session,
+	}
 }
 
-var _ scdhandler.AppHandler = &Handler{}
+type handler struct {
+	ses scdhandler.SessionManager
+}
 
-func (h *Handler) Init(ctx context.Context) error {
-	r := router.New()
-	// r.Get("/lib/", nil)
-	r.Get("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write(loginNoneHTML)
-	}))
-	r.Post("/api/login", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		u, p := r.FormValue("u"), r.FormValue("p")
+var _ scdhandler.AppHandler = &handler{}
+
+func (h *handler) Init(ctx context.Context) error {
+	return nil
+}
+func (h *handler) RequireMounts(ctx context.Context) ([]scdhandler.MountConsume, error) {
+	return nil, nil
+}
+func (h *handler) OptionalMounts(ctx context.Context) ([]scdhandler.MountConsume, error) {
+	return nil, nil
+}
+func (h *handler) ProvideMounts(ctx context.Context) ([]scdhandler.MountProvide, error) {
+	return nil, nil
+}
+func (h *handler) Session() scdhandler.SessionManager {
+	return h.ses
+}
+func (h *handler) Request(ctx context.Context, r *scdhandler.Request) (*scdhandler.Response, error) {
+	resp := &scdhandler.Response{}
+	switch r.URL.Path {
+	case "/":
+		resp.ContentType = "text/html"
+		resp.Body = loginNoneHTML
+	case "/api/login":
+		f, err := r.FormValues()
+		if err != nil {
+			return nil, scdhandler.HTTPError{Status: http.StatusInternalServerError, Err: err}
+		}
+		u, p := f.Value.Get("u"), f.Value.Get("p")
 		u = strings.TrimSpace(u)
 		p = strings.TrimSpace(p)
 
-		token, err := h.Session.Login(r.Context(), u, p)
+		token, err := h.ses.Login(ctx, u, p)
 		if err != nil {
-			http.Error(w, "bad login", http.StatusForbidden)
-			return
+			return nil, scdhandler.HTTPError{Status: http.StatusForbidden, Msg: "bad login", Err: err}
 		}
-		rs, found := scdhandler.AuthFromContext(r.Context())
+		rs, found := scdhandler.AuthFromContext(ctx)
 		if !found {
-			http.Error(w, "unable to set cookie", http.StatusInternalServerError)
-			return
+			panic("no auth context")
 		}
+		resp.Header = make(map[string][]string, 1)
 		// TODO(kardianos): set exire time, secure=true, strict origin.
-		http.SetCookie(w, &http.Cookie{
+		resp.Header.Add("Set-Cookie", (&http.Cookie{
 			Name:     rs.TokenKey,
 			Value:    token,
 			Path:     "/",
 			HttpOnly: true,
-		})
-	}))
-
-	h.r = r
-	return nil
+		}).String())
+	}
+	return resp, nil
 }
 
-func (h *Handler) URLPartition() (prefix string, consumeRedirect bool) {
+func (h *handler) URLPartition() (prefix string, consumeRedirect bool) {
 	prefix = "/login/"
 	consumeRedirect = false
 	return
-}
-
-// ServeHTTP displays a page or resources on GET or processes login on POST.
-func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	h.r.ServeHTTP(w, r)
 }
 
 var loginNoneHTML = []byte(`<!DOCTYPE html>

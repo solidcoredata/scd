@@ -2,62 +2,77 @@ package app_granted_api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
-	"github.com/gowww/router"
 	"github.com/solidcoredata/scdhttp/scdhandler"
 )
 
-type Handler struct {
-	Session scdhandler.SessionManager
-
-	r *router.Router
+type handler struct {
+	ses scdhandler.SessionManager
 }
 
-var _ scdhandler.AppHandler = &Handler{}
+var _ scdhandler.AppHandler = &handler{}
 
-func (h *Handler) Init(ctx context.Context) error {
-	r := router.New()
-	r.Get("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write(loginGrantedHTML)
-	}))
-	r.Post("/api/logout", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		rs, found := scdhandler.AuthFromContext(r.Context())
+func NewHandler(session scdhandler.SessionManager) scdhandler.AppHandler {
+	return &handler{
+		ses: session,
+	}
+}
+
+func (h *handler) Init(ctx context.Context) error {
+	return nil
+}
+
+func (h *handler) RequireMounts(ctx context.Context) ([]scdhandler.MountConsume, error) {
+	return nil, nil
+}
+func (h *handler) OptionalMounts(ctx context.Context) ([]scdhandler.MountConsume, error) {
+	return nil, nil
+}
+func (h *handler) ProvideMounts(ctx context.Context) ([]scdhandler.MountProvide, error) {
+	return nil, nil
+}
+func (h *handler) Session() scdhandler.SessionManager {
+	return h.ses
+}
+
+func (h *handler) Request(ctx context.Context, r *scdhandler.Request) (*scdhandler.Response, error) {
+	resp := &scdhandler.Response{}
+	switch r.URL.Path {
+	case "/":
+		resp.Body = loginGrantedHTML
+		resp.ContentType = "text/html"
+	case "/api/logout":
+		rs, found := scdhandler.AuthFromContext(ctx)
 		if !found {
 			panic("no auth context")
 		}
 		c, err := r.Cookie(rs.TokenKey)
 		if err != nil {
 			// If there is no cookie, user may already be logged out.
-			return
+			return resp, nil
 		}
-		err = h.Session.Logout(r.Context(), c.Value)
+		err = h.ses.Logout(ctx, c.Value)
 		if err != nil {
-			http.Error(w, "unable to logout", http.StatusInternalServerError)
-			return
+			return nil, fmt.Errorf("unable to logout: %v", err)
 		}
+		resp.Header = make(map[string][]string, 1)
 		// TODO(kardianos): set exire time, secure=true, strict origin.
-		http.SetCookie(w, &http.Cookie{
+		c = &http.Cookie{
 			Name:   rs.TokenKey,
 			Path:   "/",
 			MaxAge: -1,
-		})
-	}))
-	// TODO(kardianos): Add in additional API endpoints: proc, ui, delta, query, lookup, error.
-	h.r = r
-	return nil
+		}
+		resp.Header.Add("Set-Cookie", c.String())
+	}
+	return resp, nil
 }
 
-func (h *Handler) URLPartition() (prefix string, consumeRedirect bool) {
+func (h *handler) URLPartition() (prefix string, consumeRedirect bool) {
 	prefix = "/app1/"
 	consumeRedirect = true
 	return
-}
-
-// ServeHTTP returns an initial page with bootstrap loader.
-// Provide API handlers for additional controls and requests.
-func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	h.r.ServeHTTP(w, r)
 }
 
 var loginGrantedHTML = []byte(`<!DOCTYPE html>
