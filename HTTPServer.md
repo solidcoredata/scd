@@ -268,3 +268,31 @@ The Delta should be able to send a Validate request that the server can check in
 Sane defaults for business applications. But applications can still replace stacks as required.
 
 No inheritance, only configuration and systems that use other systems.
+
+### Write Next
+
+ * Make an API that can register resources to serve.
+   - Each resource should state if it is a single resource or tree, if staic or dynamic.
+ * Create some simple components that will pull from unique data sources
+   to test out a compoent will be able to use it's own configured data source.
+
+ * [~] Add Error login state, used for mis-configured or system errors to display.
+ * Allow AppHandlers to request resources from other handlers.
+ * Determine real-time message API too, something that on the backend is a
+   GRPC streaming response, and on the front end is a HTTP POST long pull.
+   This will be used early on for updating the client automatically during
+   development. Later it may be used to indicate a report is completed.
+   Avoid websockets.
+
+ * Components won't create API or deal with requests and responses I think.
+   - Components need to work with some internally defined APIs.
+   - Components need to hit their own backend database.
+
+
+### Random
+
+ * In new API, want to be able to lazy load values before edit, optionally show
+   a preview for gird.
+   - Used for lazy load PDF or binary preview.
+   - Used for editing long / large string values.
+
