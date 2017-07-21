@@ -277,6 +277,8 @@ No inheritance, only configuration and systems that use other systems.
    to test out a compoent will be able to use it's own configured data source.
 
  * [~] Add Error login state, used for mis-configured or system errors to display.
+ * [x] Split out the UI and Data portions, allow composing AppHandlers into various
+       parts. Create a registration process.
  * Allow AppHandlers to request resources from other handlers.
  * Determine real-time message API too, something that on the backend is a
    GRPC streaming response, and on the front end is a HTTP POST long pull.
