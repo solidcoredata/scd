@@ -9,6 +9,8 @@ import (
 	"net/url"
 )
 
+// Form is similar to multipart.Form, but Value is a url.Values
+// for the methods defined on it.
 type Form struct {
 	Value url.Values
 	File  map[string][]*multipart.FileHeader

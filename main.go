@@ -8,7 +8,10 @@ import (
 	"os"
 
 	"github.com/solidcoredata/scdhttp/app/app_granted_api"
+	"github.com/solidcoredata/scdhttp/app/app_granted_ui"
 	"github.com/solidcoredata/scdhttp/app/app_none_api"
+	"github.com/solidcoredata/scdhttp/app/app_none_ui"
+	"github.com/solidcoredata/scdhttp/app/compose"
 	"github.com/solidcoredata/scdhttp/auth/auth_memory"
 	"github.com/solidcoredata/scdhttp/scdhandler"
 )
@@ -37,20 +40,32 @@ func main() {
 	// I'd like to be able to support multiple QA environments on the same Host.
 	// I can probably do this by configuring a special LoginGranted handler that
 	// maps paths to nested-applications.
+	//
+	// In addition to the State handler, I'd also like to define various service
+	// descriptions that can be implemented by a service. Then we define a
+	// list of services that implement service descriptions.
+	// We then move the Authenticator into a service description
+	// and move the session manager into a service description. The
+	// AuthenticateMemory service is used to satisfy both service descriptions.
+	// The API component handlers for login and logout both require the service
+	// description for session management.
+	//
+	// Other service descriptions include: Database Querier, Report Engine,
+	// Scheduler.
 	h := &scdhandler.RouteHandler{
 		Router: scdhandler.HostRouter{
 			"localhost:9786": scdhandler.LoginStateRouter{
 				Authenticator: authSession,
 				State: map[scdhandler.LoginState]scdhandler.AppHandler{
-					scdhandler.LoginNone:    app_none_api.NewHandler(authSession),
-					scdhandler.LoginGranted: app_granted_api.NewHandler(authSession),
+					scdhandler.LoginNone:    compose.NewHandler(authSession, "/login/", false, app_none_api.NewHandler(authSession), app_none_ui.NewHandler()),
+					scdhandler.LoginGranted: compose.NewHandler(authSession, "/app/", true, app_granted_api.NewHandler(authSession), app_granted_ui.NewHandler()),
 				},
 			},
 			"localhost:9787": scdhandler.LoginStateRouter{
 				Authenticator: authSession,
 				State: map[scdhandler.LoginState]scdhandler.AppHandler{
-					scdhandler.LoginNone:    app_none_api.NewHandler(authSession),
-					scdhandler.LoginGranted: app_granted_api.NewHandler(authSession),
+					scdhandler.LoginNone:    compose.NewHandler(authSession, "/login/", false, app_none_api.NewHandler(authSession), app_none_ui.NewHandler()),
+					scdhandler.LoginGranted: compose.NewHandler(authSession, "/app/", true, app_granted_api.NewHandler(authSession), app_granted_ui.NewHandler()),
 				},
 			},
 		},

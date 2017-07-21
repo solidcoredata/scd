@@ -75,10 +75,6 @@ type MountProvide struct {
 	//  "/lib/staic/" mount directory.
 	//  "/api/syscall" mount endpoint.
 	At string
-
-	// Endpoint name to call. Is this needed?
-	// I don't think this is needed.
-	Call string
 }
 type MountConsume struct {
 	At string
@@ -167,14 +163,22 @@ type AppHandler interface {
 	// Init is called after the application is loaded.
 	Init(context.Context) error
 
+	// Request should be routed by the r.URL.Path field.
+	Request(ctx context.Context, r *Request) (*Response, error)
+}
+
+// AppComponentHandler provides sufficent information to route incomming application
+// requests and partition the URL namespace.
+type AppComponentHandler interface {
+	// Init is called after the application is loaded.
+	Init(context.Context) error
+
 	RequireMounts(ctx context.Context) ([]MountConsume, error)
 	OptionalMounts(ctx context.Context) ([]MountConsume, error)
 	ProvideMounts(ctx context.Context) ([]MountProvide, error)
 
 	// Request should be routed by the r.URL.Path field.
 	Request(ctx context.Context, r *Request) (*Response, error)
-
-	Session() SessionManager
 }
 
 // LoginStateRouter links login states with a routable handler.

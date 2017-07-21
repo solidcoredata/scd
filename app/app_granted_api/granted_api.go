@@ -12,9 +12,9 @@ type handler struct {
 	ses scdhandler.SessionManager
 }
 
-var _ scdhandler.AppHandler = &handler{}
+var _ scdhandler.AppComponentHandler = &handler{}
 
-func NewHandler(session scdhandler.SessionManager) scdhandler.AppHandler {
+func NewHandler(session scdhandler.SessionManager) scdhandler.AppComponentHandler {
 	return &handler{
 		ses: session,
 	}
@@ -31,18 +31,14 @@ func (h *handler) OptionalMounts(ctx context.Context) ([]scdhandler.MountConsume
 	return nil, nil
 }
 func (h *handler) ProvideMounts(ctx context.Context) ([]scdhandler.MountProvide, error) {
-	return nil, nil
-}
-func (h *handler) Session() scdhandler.SessionManager {
-	return h.ses
+	return []scdhandler.MountProvide{
+		{At: "/api/logout"},
+	}, nil
 }
 
 func (h *handler) Request(ctx context.Context, r *scdhandler.Request) (*scdhandler.Response, error) {
 	resp := &scdhandler.Response{}
 	switch r.URL.Path {
-	case "/":
-		resp.Body = loginGrantedHTML
-		resp.ContentType = "text/html"
 	case "/api/logout":
 		rs, found := scdhandler.AuthFromContext(ctx)
 		if !found {
@@ -68,50 +64,3 @@ func (h *handler) Request(ctx context.Context, r *scdhandler.Request) (*scdhandl
 	}
 	return resp, nil
 }
-
-func (h *handler) URLPartition() (prefix string, consumeRedirect bool) {
-	prefix = "/app1/"
-	consumeRedirect = true
-	return
-}
-
-var loginGrantedHTML = []byte(`<!DOCTYPE html>
-<meta charset="UTF-8">
-
-<title>Granted to $APP</title>
-
-<h1>Granted to $APP</h1>
-
-<h2>Hello</h2>
-<div id=logout>logout</div>
-
-<script>
-var logoutButton = document.querySelector("#logout");
-
-logoutButton.addEventListener("click", function(ev) {
-	logout();
-});
-function logout() {
-	var req = new XMLHttpRequest();
-	req.onerror = function(ev) {
-		alert("Unknown error, application may be down.");
-	}
-	req.onload = function(ev) {
-		if(ev.target.status === 200) {
-			location.pathname = "/";
-			return;
-		}
-		// User may be already logged out. This may result in the
-		// logout endpoint from being available.
-		if(ev.target.status === 404) {
-			location.pathname = "/";
-			return;
-		}
-		alert("Unknown error, application may be down.");
-	}
-	req.open("POST", "api/logout", true);
-	req.responseType = "text";
-	req.send();
-}
-</script>
-`)
