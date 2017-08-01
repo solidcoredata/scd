@@ -11,13 +11,13 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/solidcoredata/scdhttp/app/app_granted_api"
-	"github.com/solidcoredata/scdhttp/app/app_granted_ui"
-	"github.com/solidcoredata/scdhttp/app/app_none_api"
-	"github.com/solidcoredata/scdhttp/app/app_none_ui"
-	"github.com/solidcoredata/scdhttp/app/compose"
-	"github.com/solidcoredata/scdhttp/auth/auth_memory"
-	"github.com/solidcoredata/scdhttp/scdhandler"
+	"github.com/solidcoredata/scd/app/app_granted_api"
+	"github.com/solidcoredata/scd/app/app_granted_ui"
+	"github.com/solidcoredata/scd/app/app_none_api"
+	"github.com/solidcoredata/scd/app/app_none_ui"
+	"github.com/solidcoredata/scd/app/compose"
+	"github.com/solidcoredata/scd/auth/auth_memory"
+	"github.com/solidcoredata/scd/scdhandler"
 )
 
 func main() {

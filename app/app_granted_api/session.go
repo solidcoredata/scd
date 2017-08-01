@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/solidcoredata/scdhttp/scdhandler"
+	"github.com/solidcoredata/scd/scdhandler"
 )
 
 type sessionHandler struct {

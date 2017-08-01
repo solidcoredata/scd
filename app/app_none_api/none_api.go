@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/solidcoredata/scdhttp/scdhandler"
+	"github.com/solidcoredata/scd/scdhandler"
 )
 
 func NewHandler(session scdhandler.SessionManager) scdhandler.AppComponentHandler {

@@ -12,7 +12,7 @@ import (
 	"image/draw"
 	"image/png"
 
-	"github.com/solidcoredata/scdhttp/scdhandler"
+	"github.com/solidcoredata/scd/scdhandler"
 )
 
 func NewHandler() scdhandler.AppComponentHandler {

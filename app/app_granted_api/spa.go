@@ -8,7 +8,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/solidcoredata/scdhttp/scdhandler"
+	"github.com/solidcoredata/scd/scdhandler"
 )
 
 // There are a few types of items for a SPA:

@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/solidcoredata/scdhttp/scdhandler"
+	"github.com/solidcoredata/scd/scdhandler"
 )
 
 // BUG(kardianos): normalize identity and passwords.
