@@ -79,6 +79,21 @@ they can also be replaced with alternate implementations.
    itself can be used as a binary blob and never touched or compiled
    during application development.
 
+ * Dev frame (around normal nav frame) can be used to update other components.
+ * Updates can be pushed by server to client if dev mode is on.
+ * Application compiles to a servable spec that contains database schemas,
+   alter scripts to increment schema versions, UI definitions, UI widgets,
+   and custom code.
+ * Each version of the system needs to be checkpointed and saved off for
+   updates, including the UI and widget set.
+ * App Layers:
+   - Database Schema
+   - Queries
+   - (UI widgets) Not part of the specific app stack exactly, but required by
+     the UI definition. Should be able to validate the UI definition.
+   - UI Definition. Must know what database coloumns and query columns it uses
+     so compiler can create correct alter script and to detect errors early.
+
 ### Non-goals
 
  * Don't try to make development faster. This might happen,
@@ -125,6 +140,8 @@ Building out optional components will include:
  * More UI Components
 
 Using the framework and various tweaks is TBD.
+
+Include in the project root README and website a way to disclose security vulnerabilities.
 
 ## Implementation
 
