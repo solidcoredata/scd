@@ -1,7 +1,12 @@
 package app_none_ui
 
 import (
+	"bytes"
 	"context"
+	"image"
+	"image/color"
+	"image/draw"
+	"image/png"
 
 	"github.com/solidcoredata/scdhttp/scdhandler"
 )
@@ -27,6 +32,7 @@ func (h *handler) OptionalMounts(ctx context.Context) ([]scdhandler.MountConsume
 func (h *handler) ProvideMounts(ctx context.Context) ([]scdhandler.MountProvide, error) {
 	return []scdhandler.MountProvide{
 		{At: "/"},
+		{At: "/ui/favicon"},
 	}, nil
 }
 func (h *handler) Request(ctx context.Context, r *scdhandler.Request) (*scdhandler.Response, error) {
@@ -35,12 +41,20 @@ func (h *handler) Request(ctx context.Context, r *scdhandler.Request) (*scdhandl
 	case "/":
 		resp.ContentType = "text/html"
 		resp.Body = loginNoneHTML
+	case "/ui/favicon":
+		img := image.NewRGBA(image.Rect(0, 0, 192, 192))
+		draw.Draw(img, img.Rect, image.NewUniform(color.RGBA{R: 255, A: 255}), image.ZP, draw.Over)
+		buf := &bytes.Buffer{}
+		png.Encode(buf, img)
+		resp.ContentType = "image/png"
+		resp.Body = buf.Bytes()
 	}
 	return resp, nil
 }
 
 var loginNoneHTML = []byte(`<!DOCTYPE html>
 <meta charset="UTF-8">
+<link rel="icon" href="ui/favicon">
 
 <title>Login to $APP</title>
 

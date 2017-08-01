@@ -173,8 +173,6 @@ type AppComponentHandler interface {
 	// Init is called after the application is loaded.
 	Init(context.Context) error
 
-	RequireMounts(ctx context.Context) ([]MountConsume, error)
-	OptionalMounts(ctx context.Context) ([]MountConsume, error)
 	ProvideMounts(ctx context.Context) ([]MountProvide, error)
 
 	// Request should be routed by the r.URL.Path field.
