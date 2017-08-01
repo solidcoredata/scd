@@ -125,9 +125,8 @@ Using the framework and various tweaks is TBD.
 
 ### Security
 
-To report a security bug plase email [kardianos@gmail.com](mailto:kardianos@gmail.com).
-Please set the subject `SCD Security`.
-Your email will be acknoledged within 72 hours.
+To report a security bug plase email [security@solidcoredata.org](mailto:security@solidcoredata.org).
+Your email will be acknowledged within 72 hours.
 
 ### License
 
