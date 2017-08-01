@@ -66,33 +66,15 @@ Each one of these are defined through network friendly
 interfaces. While default implementations will be provided
 they can also be replaced with alternate implementations.
 
-### Random details
+### Development
 
- * Data is sent from the backend to the frontend using a
-   standard table set based format.
- * Changes are encoded as row deltas.
- * Backend servers should be micro-service friendly
-   and easily hostable on k8s.
- * Authentication server will support FIDO U2F out of the box.
- * When developing an application, the application needs to satisfy
-   one or more interfaces to be run under the framework. The framework
-   itself can be used as a binary blob and never touched or compiled
-   during application development.
+Applications are comprised of server-side code, schema definitions,
+schema transition plans, UI definitions, and UI custom components.
 
- * Dev frame (around normal nav frame) can be used to update other components.
- * Updates can be pushed by server to client if dev mode is on.
- * Application compiles to a servable spec that contains database schemas,
-   alter scripts to increment schema versions, UI definitions, UI widgets,
-   and custom code.
- * Each version of the system needs to be checkpointed and saved off for
-   updates, including the UI and widget set.
- * App Layers:
-   - Database Schema
-   - Queries
-   - (UI widgets) Not part of the specific app stack exactly, but required by
-     the UI definition. Should be able to validate the UI definition.
-   - UI Definition. Must know what database coloumns and query columns it uses
-     so compiler can create correct alter script and to detect errors early.
+Applications are compiled from a set of application services and definitions
+to a deployable unit. The primary target (and only target at this time) is
+the HTTP server. The compilation step verifies all queries are valid,
+and all fields correclty reference valid columns.
 
 ### Non-goals
 
@@ -100,12 +82,10 @@ they can also be replaced with alternate implementations.
    but only as a side effect.
  * Don't try to change how development is done. Use git, standard SQL,
    allow the use standard UI libraries and components.
- * Do not try to control everything. Assume each application will have
+ * Don't try to control everything. Assume each application will have
    some custom controls and screens. Assume application may need
    to provide different backend servers or wrap an existing authentication
    or reporting server.
- * Do not assume as specific runtime environment. Have a way to run under
-   Windows IIS as well as Linux k8s.
 
 ## Project Roadmap
 
@@ -141,9 +121,13 @@ Building out optional components will include:
 
 Using the framework and various tweaks is TBD.
 
-Include in the project root README and website a way to disclose security vulnerabilities.
-
 ## Implementation
+
+### Security
+
+To report a security bug plase email [kardianos@gmail.com](mailto:kardianos@gmail.com).
+Please set the subject `SCD Security`.
+Your email will be acknoledged within 72 hours.
 
 ### License
 
@@ -157,6 +141,6 @@ Each file should have a standard header:
 
 At the moment copyright is not assigned. However before external contributions
 are accepted or the framework used in production, a business must be formed
-and copyright assigned directly to the project. Solid Core Data project will
+and copyright assigned directly to the project. The Solid Core Data project will
 be made distinct from the business name.
 
