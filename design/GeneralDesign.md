@@ -62,6 +62,12 @@ is loaded from the server.
    - Components need to work with some internally defined APIs.
    - Components need to hit their own backend database.
 
+ * Look into Kubernetes API aggregation layer / Custom Resource Definition.
+   SCD needs to allow applications to extend and have custom data points.
+   This may have specific ideas on how to design "extension" within SCD.
+   - https://kubernetes.io/docs/tasks/access-kubernetes-api/extend-api-custom-resource-definitions/
+   - https://kubernetes.io/docs/concepts/api-extension/apiserver-aggregation/
+
 ## Mixed Notes
 
  * In new API, want to be able to lazy load values before edit, optionally show
