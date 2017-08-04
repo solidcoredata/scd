@@ -103,19 +103,43 @@ type ReturnItem struct {
 	Body     string // JSON, Javascript
 }
 
+func JSON(v interface{}) string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
+}
+
 type CN struct{ Category, Name string }
 
 var requestMap = map[CN][]*ReturnItem{
-	CN{"code", "base"}: []*ReturnItem{
-		// {Action: "store", Category: "base", Name: "loader", Body: `{"Next":{"Category":"config","Name":"example1.solidcoredata.org/system-menu"}}`},
-		{Action: "execute", Category: "base", Name: "loader", Body: baseLoader, Require: []CN{{"config", "example1.solidcoredata.org/system-menu"}}},
+	CN{"base", "setup"}: []*ReturnItem{
+		{Action: "store", Category: "base", Name: "config", Body: JSON(struct{ Next CN }{CN{Category: "config", Name: "example1.solidcoredata.org/system-menu"}})},
+		{Action: "execute", Category: "base", Name: "loader", Body: baseLoader},
 	},
 	CN{"config", "example1.solidcoredata.org/system-menu"}: []*ReturnItem{
-		{Action: "store", Category: "base", Name: "config", Require: []CN{{"code", "solidcoredata.org/system-menu"}}, Body: `[{"Name": "File", "Location":"file"},{"Name": "Edit", "Location":"edit"}]`},
+		{Action: "store", Require: []CN{{"code", "solidcoredata.org/system-menu"}}, Body: JSON(struct {
+			Type string
+			Menu []struct{ Name, Location string }
+		}{Type: "solidcoredata.org/system-menu", Menu: []struct{ Name, Location string }{{"File", "file"}, {"Edit", "edit"}}})},
 	},
 	CN{"code", "solidcoredata.org/system-menu"}: []*ReturnItem{
-		{Action: "execute", Category: "code", Name: "solidcoredata.org/system-menu", Body: widgetMenu},
+		{Action: "execute", Body: widgetMenu},
 	},
+}
+
+func init() {
+	for key, value := range requestMap {
+		for _, item := range value {
+			if len(item.Category) == 0 {
+				item.Category = key.Category
+			}
+			if len(item.Name) == 0 {
+				item.Name = key.Name
+			}
+		}
+	}
 }
 
 func (h *spaHandler) Request(ctx context.Context, r *scdhandler.Request) (*scdhandler.Response, error) {
@@ -156,10 +180,17 @@ func (h *spaHandler) Request(ctx context.Context, r *scdhandler.Request) (*scdha
 // in a link, or set directly to location.href.
 
 var widgetMenu = `"use strict";
-system.init.set("code","widget-menu",function(config) {
+var f = function(config) {
 	// Create widget instance based on provided config.
 	// Then do something with it.
-});
+	this.d = document.createElement("div");
+	this.d.innerText = "hello world";
+}
+
+f.prototype.ElementRoot = function() {
+	return this.d;
+};
+system.init.set("code","solidcoredata.org/system-menu", f);
 `
 
 // baseLoader loads configs and sets up the initial widgets.
@@ -183,35 +214,54 @@ system.init.set("code","widget-menu",function(config) {
 // link.replace(widget, config-name, initial-params)
 // link.child(widget, config-name)
 var baseLoader = `"use strict";
-var bc = system.base.config;
-
 system.init.set("nav","close",function(instance) {
 });
 system.init.set("nav","replace",function(instance, configName, config) {
 });
 system.init.set("nav","child",function(instance, configName, config) {
 });
-
-system.init.set("nav","create",function(category, name, done) {
-	var hasDone = function(ok) {
-		var requested = system.init.get(category, name);
-		if(!ok || !requested) {
-			done(false);
-			return;
-		}
-		
-	};
-	if(system.init.has(category,name) === false) {
-		system.init.fetch([{Category:category, Name:name}], hasDone);
+system.init.set("nav","create",function(cn, done) {
+	let c = system.init.get(cn.Category, cn.Name);
+	if(!c) {
+		done("missing cn for " + cn.Category + "." + cn.Name, null);
+		return;
 	}
+	if(typeof c.Type !== "string") {
+		done("missing Type field in " + cn.Category + "." + cn.Name, null);
+		return;
+	}
+	let ctype = system.init.get("code", c.Type);
+	if(!ctype) {
+		done("missing type " + c.Type, null);
+		return;
+	}
+	let w = new ctype(c);
+	done(null, w);
 });
+
+// TODO: Setup a route listener.
 
 system.init.set("data","fetch",function(config) {
 	// Create widget instance based on provided config.
 	// Then do something with it.
 });
-system.nav.create("base", "config", function(ok) {
-	
+
+var bc = system.base.config;
+system.init.fetch([bc.Next], function(err) {
+	if(err != null) {
+		console.error("failed to fetch next:", err);
+		return;
+	}
+	system.nav.create(bc.Next, function(err, w) {
+		if(err != null) {
+			console.error("failed to create next widget:", err);
+			return;
+		}
+		system.init.set("w", "root", w);
+		let root = w.ElementRoot()
+		document.body.innerHTML = "";
+		document.body.append(root);
+	});
 });
 `
 
@@ -221,25 +271,18 @@ window.system = (function() {
 	"use strict";
 	var init = {};
 	var sys = {init: init};
-
-	init.bootstrap = function() {
-		init.errors = [];
-		init.onError = function() {
-			if(!console || !console.error) {
-				return;
-			}
-			for(let i = 0; i < system.init.errors.length; i++) {
-				let e = system.init.errors[i];
-				console.error(e.Category, e.Name, e.On, e.Error, e.Input);
-			}
-		};
-		init.fetch([{Category:"code", Name:"base"}], function(ok) {
-			if(!ok) {
-				alert("failed to load application");
-				return;
-			}
-		});
+	
+	init.errors = [];
+	init.onError = function() {
+		if(!console || !console.error) {
+			return;
+		}
+		for(let i = 0; i < system.init.errors.length; i++) {
+			let e = system.init.errors[i];
+			console.error(e.Category, e.Name, e.On, e.Error, e.Input);
+		}
 	};
+	
 	function pushHTTPError(cnList, msg, done) {
 		for(let i = 0; i < cnList.length; i++) {
 			let cn = cnList[i];
@@ -255,7 +298,7 @@ window.system = (function() {
 			init.onError();
 		}
 		if(typeof done === "function") {
-			done(false);
+			done(msg);
 		}
 	}
 	function pushItemError(item, ex) {
@@ -294,12 +337,12 @@ window.system = (function() {
 		}
 		return true;
 	}
-	function finishItem(ok, resp, done) {
+	function finishItem(err, resp, done) {
 		let hasError = false;
-		if(!ok) {
+		if(err != null) {
 			hasError = true;
 		}
-		if(ok && resp) {
+		if(err == null && resp) {
 			for(let i = 0; i < resp.length; i++) {
 				let item = resp[i];
 				if(processItem(item) === false) {
@@ -313,7 +356,7 @@ window.system = (function() {
 		}
 		
 		if(typeof done === "function") {
-			done(ok);
+			done(err);
 		}
 	};
 	init.fetch = function(cnList, done) {
@@ -344,11 +387,11 @@ window.system = (function() {
 			}
 			// TODO: de-duplicate needed items.
 			if(need.length === 0) {
-				finishItem(true, resp, done);
+				finishItem(null, resp, done);
 				return;
 			}
-			init.fetch(need, function(ok) {
-				finishItem(ok, resp, done);
+			init.fetch(need, function(err) {
+				finishItem(err, resp, done);
 			});
 		}
 		
@@ -390,7 +433,13 @@ window.system = (function() {
 	};
 	return sys;
 })();
-system.init.bootstrap();
+
+system.init.fetch([{Category:"base", Name:"setup"}], function(err) {
+	if(err != null) {
+		console.error("failed to load application", err);
+		return;
+	}
+});
 `)
 
 /*

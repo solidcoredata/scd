@@ -91,8 +91,7 @@ func main() {
 			"localhost:9786": scdhandler.LoginStateRouter{
 				Authenticator: authSession,
 				State: map[scdhandler.LoginState]scdhandler.AppHandler{
-					scdhandler.LoginNone:    compose.NewHandler(authSession, "/login/", false, app_none_api.NewHandler(authSession), app_none_ui.NewHandler()),
-					scdhandler.LoginGranted: compose.NewHandler(authSession, "/app/", true, app_granted_api.NewSessionHandler(authSession), app_granted_api.NewSPAHandler(), app_granted_ui.NewHandler()),
+					scdhandler.LoginNone: compose.NewHandler(authSession, "/app/", true, app_granted_api.NewSessionHandler(authSession), app_granted_api.NewSPAHandler(), app_granted_ui.NewHandler()),
 				},
 			},
 			"localhost:9787": scdhandler.LoginStateRouter{
