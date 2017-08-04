@@ -85,6 +85,37 @@ func main() {
 	// 2. Create a registry for Thing1.
 	// 3. Let Thing1 pipe a ui widget to the client.
 	// 4. Let /api/data send data requests to Thing1's database.
+	//
+	// Route Handler / HTTP Server:
+	// 		Configured on HTTP Server. Next step a caddy plugin probably.
+	//		Each server needs an HTTP listener, an authenticator service, and one or more application services.
+	//		gRPC is exlusivly used beyond the HTTP server.
+	// Authenticator Service:
+	//		Referenced by multiple services.
+	//		Provides login / logout / session auth services via API.
+	//		In future may also provide an application screen for managing users and setup.
+	// Application Services:
+	//		URL Sharding:
+	//			Composing URL routes is easy, will rely on getting notified when
+	//			The end service restarts or updates URLs.
+	//			URL conflicts should not bring down everything, just the routes in question.
+	//		SPA Widgets & Configurations:
+	//			Have a specialized SPA registry.
+	//			Probably each application will register one or more prefixs to forward to
+	//			the application, as well as specific names (esp for boot strap names).
+	//		Data Handlers:
+	//			Probably similar in many ways to the above.
+	//			Details TBD.
+	//
+	// Route Handler / HTTP Server holds the configuration to the authentication
+	// service and application services. It also configures the login type, prefix,
+	// and consume-redirect directive.
+	//
+	// Once connected application services will need to notify the Route Handler
+	// of the sharding rules, route assignments. Notifications on updates will be important.
+	//
+	// TBD: how to handle k8s style rolling update, or what the story is on
+	// versioning application servers.
 	h := &scdhandler.RouteHandler{
 		Router: scdhandler.HostRouter{
 			"localhost:9786": scdhandler.LoginStateRouter{
