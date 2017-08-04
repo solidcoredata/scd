@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package app_none_api
+package none
 
 import (
 	"context"
@@ -12,33 +12,33 @@ import (
 	"github.com/solidcoredata/scd/scdhandler"
 )
 
-func NewHandler(session scdhandler.SessionManager) scdhandler.AppComponentHandler {
-	return &handler{
+func NewSessionHandler(session scdhandler.SessionManager) scdhandler.AppComponentHandler {
+	return &sessionHandler{
 		ses: session,
 	}
 }
 
-type handler struct {
+type sessionHandler struct {
 	ses scdhandler.SessionManager
 }
 
-var _ scdhandler.AppComponentHandler = &handler{}
+var _ scdhandler.AppComponentHandler = &sessionHandler{}
 
-func (h *handler) Init(ctx context.Context) error {
+func (h *sessionHandler) Init(ctx context.Context) error {
 	return nil
 }
-func (h *handler) RequireMounts(ctx context.Context) ([]scdhandler.MountConsume, error) {
+func (h *sessionHandler) RequireMounts(ctx context.Context) ([]scdhandler.MountConsume, error) {
 	return nil, nil
 }
-func (h *handler) OptionalMounts(ctx context.Context) ([]scdhandler.MountConsume, error) {
+func (h *sessionHandler) OptionalMounts(ctx context.Context) ([]scdhandler.MountConsume, error) {
 	return nil, nil
 }
-func (h *handler) ProvideMounts(ctx context.Context) ([]scdhandler.MountProvide, error) {
+func (h *sessionHandler) ProvideMounts(ctx context.Context) ([]scdhandler.MountProvide, error) {
 	return []scdhandler.MountProvide{
 		{At: "/api/login"},
 	}, nil
 }
-func (h *handler) Request(ctx context.Context, r *scdhandler.Request) (*scdhandler.Response, error) {
+func (h *sessionHandler) Request(ctx context.Context, r *scdhandler.Request) (*scdhandler.Response, error) {
 	resp := &scdhandler.Response{}
 	switch r.URL.Path {
 	case "/api/login":

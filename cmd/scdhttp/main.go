@@ -11,11 +11,10 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/solidcoredata/scd/app/app_granted_api"
-	"github.com/solidcoredata/scd/app/app_granted_ui"
-	"github.com/solidcoredata/scd/app/app_none_api"
-	"github.com/solidcoredata/scd/app/app_none_ui"
 	"github.com/solidcoredata/scd/app/compose"
+	"github.com/solidcoredata/scd/app/granted"
+	"github.com/solidcoredata/scd/app/none"
+	"github.com/solidcoredata/scd/app/spa"
 	"github.com/solidcoredata/scd/auth/auth_memory"
 	"github.com/solidcoredata/scd/scdhandler"
 )
@@ -91,14 +90,14 @@ func main() {
 			"localhost:9786": scdhandler.LoginStateRouter{
 				Authenticator: authSession,
 				State: map[scdhandler.LoginState]scdhandler.AppHandler{
-					scdhandler.LoginNone: compose.NewHandler(authSession, "/app/", true, app_granted_api.NewSessionHandler(authSession), app_granted_api.NewSPAHandler(), app_granted_ui.NewHandler()),
+					scdhandler.LoginNone: compose.NewHandler(authSession, "/app/", true, granted.NewSessionHandler(authSession), spa.NewHandler(), granted.NewUIHandler()),
 				},
 			},
 			"localhost:9787": scdhandler.LoginStateRouter{
 				Authenticator: authSession,
 				State: map[scdhandler.LoginState]scdhandler.AppHandler{
-					scdhandler.LoginNone:    compose.NewHandler(authSession, "/login/", false, app_none_api.NewHandler(authSession), app_none_ui.NewHandler()),
-					scdhandler.LoginGranted: compose.NewHandler(authSession, "/app/", true, app_granted_api.NewSessionHandler(authSession), app_granted_api.NewSPAHandler(), app_granted_ui.NewHandler()),
+					scdhandler.LoginNone:    compose.NewHandler(authSession, "/login/", false, none.NewSessionHandler(authSession), none.NewUIHandler()),
+					scdhandler.LoginGranted: compose.NewHandler(authSession, "/app/", true, granted.NewSessionHandler(authSession), spa.NewHandler(), granted.NewUIHandler()),
 				},
 			},
 		},
@@ -114,9 +113,7 @@ func main() {
 
 	for serveon := range h.Router {
 		go func(serveon string) {
-			err := http.ListenAndServe(serveon, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				h.ServeHTTP(w, r)
-			}))
+			err := http.ListenAndServe(serveon, h)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "main: unable to listen and serve on %q: %v\n", serveon, err)
 			}

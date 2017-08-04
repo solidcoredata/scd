@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package app_granted_api
+package spa
 
 import (
 	"context"
@@ -49,7 +49,7 @@ import (
 
 // SPAItem needs to return a list of widget types, widget instances, and databases
 // available.
-type SPAItem interface {
+type Item interface {
 	WidgetType() []WidgetType
 	WidgetInstance() []WidgetInstance
 	DatabaseQueryer() []DatabaseQueryer
@@ -59,34 +59,34 @@ type WidgetType struct{}
 type WidgetInstance struct{}
 type DatabaseQueryer struct{}
 
-type SPAItemRegister interface {
+type ItemRegister interface {
 	scdhandler.AppComponentHandler
 
-	RegisterSPAItem(item SPAItem) error
+	RegisterItem(item Item) error
 }
 
 // TODO: Also implement the widget/database registry here.
-type spaHandler struct {
+type handler struct {
 	// Database list
 	// Widget type list linked to resources for file.
 	// Widget configuration list.
 }
 
-var _ scdhandler.AppComponentHandler = &spaHandler{}
+var _ scdhandler.AppComponentHandler = &handler{}
 
-func NewSPAHandler() SPAItemRegister {
-	return &spaHandler{}
+func NewHandler() ItemRegister {
+	return &handler{}
 }
 
-func (h *spaHandler) Init(ctx context.Context) error {
+func (h *handler) Init(ctx context.Context) error {
 	return nil
 }
 
-func (h *spaHandler) RegisterSPAItem(item SPAItem) error {
+func (h *handler) RegisterItem(item Item) error {
 	return nil
 }
 
-func (h *spaHandler) ProvideMounts(ctx context.Context) ([]scdhandler.MountProvide, error) {
+func (h *handler) ProvideMounts(ctx context.Context) ([]scdhandler.MountProvide, error) {
 	return []scdhandler.MountProvide{
 		{At: "/api/init.js"},
 		{At: "/api/fetch-ui"},
@@ -142,7 +142,7 @@ func init() {
 	}
 }
 
-func (h *spaHandler) Request(ctx context.Context, r *scdhandler.Request) (*scdhandler.Response, error) {
+func (h *handler) Request(ctx context.Context, r *scdhandler.Request) (*scdhandler.Response, error) {
 	resp := &scdhandler.Response{}
 	switch r.URL.Path {
 	case "/api/init.js":

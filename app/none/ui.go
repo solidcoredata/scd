@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package app_none_ui
+package none
 
 import (
 	"bytes"
@@ -15,31 +15,31 @@ import (
 	"github.com/solidcoredata/scd/scdhandler"
 )
 
-func NewHandler() scdhandler.AppComponentHandler {
-	return &handler{}
+func NewUIHandler() scdhandler.AppComponentHandler {
+	return &uiHandler{}
 }
 
-type handler struct {
+type uiHandler struct {
 }
 
-var _ scdhandler.AppComponentHandler = &handler{}
+var _ scdhandler.AppComponentHandler = &uiHandler{}
 
-func (h *handler) Init(ctx context.Context) error {
+func (h *uiHandler) Init(ctx context.Context) error {
 	return nil
 }
-func (h *handler) RequireMounts(ctx context.Context) ([]scdhandler.MountConsume, error) {
+func (h *uiHandler) RequireMounts(ctx context.Context) ([]scdhandler.MountConsume, error) {
 	return nil, nil
 }
-func (h *handler) OptionalMounts(ctx context.Context) ([]scdhandler.MountConsume, error) {
+func (h *uiHandler) OptionalMounts(ctx context.Context) ([]scdhandler.MountConsume, error) {
 	return nil, nil
 }
-func (h *handler) ProvideMounts(ctx context.Context) ([]scdhandler.MountProvide, error) {
+func (h *uiHandler) ProvideMounts(ctx context.Context) ([]scdhandler.MountProvide, error) {
 	return []scdhandler.MountProvide{
 		{At: "/"},
 		{At: "/ui/favicon"},
 	}, nil
 }
-func (h *handler) Request(ctx context.Context, r *scdhandler.Request) (*scdhandler.Response, error) {
+func (h *uiHandler) Request(ctx context.Context, r *scdhandler.Request) (*scdhandler.Response, error) {
 	resp := &scdhandler.Response{}
 	switch r.URL.Path {
 	case "/":
