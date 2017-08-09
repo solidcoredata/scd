@@ -40,7 +40,7 @@ is loaded from the server.
 ## Next
 
  * [ ] Create the client components of a SPA:
-   - [ ] Client router. Use `history.pushState`, state/page should be encoded in query segment of URL.
+   - [ ] Client router. Use URL Hash section. Do not use history API, enables links to just be links.
    - [ ] Encode client state outside of a widget.
    - [ ] Data cache.
    - [ ] Basic navigation frame.
@@ -57,11 +57,9 @@ is loaded from the server.
    This will be used early on for updating the client automatically during
    development. Later it may be used to indicate a report is completed.
    Avoid websockets.
-
  * Components won't create API or deal with requests and responses I think.
    - Components need to work with some internally defined APIs.
    - Components need to hit their own backend database.
-
  * Look into Kubernetes API aggregation layer / Custom Resource Definition.
    SCD needs to allow applications to extend and have custom data points.
    This may have specific ideas on how to design "extension" within SCD.
@@ -74,7 +72,6 @@ is loaded from the server.
    a preview for gird.
    - Used for lazy load PDF or binary preview.
    - Used for editing long / large string values.
-
  * Data is sent from the backend to the frontend using a
    standard table set based format.
  * Changes are encoded as row deltas.
@@ -85,7 +82,6 @@ is loaded from the server.
    one or more interfaces to be run under the framework. The framework
    itself can be used as a binary blob and never touched or compiled
    during application development.
-
  * Dev frame (around normal nav frame) can be used to update other components.
  * Updates can be pushed by server to client if dev mode is on.
  * Application compiles to a servable spec that contains database schemas,
@@ -214,32 +210,33 @@ HTTP Router Input:
    - service-1 fetch bundle-A and bundle-B
    - service-2 fetch bundle-Z
 
-Router -> Applications (bundle-A, bundle-B, bundle-Z)
-	returns
-	Configure LoginState
-		LoginState: None,prefix=/login/,consume-redirect=false
-		LoginState: Granted,prefix=/app/,consume-redirect=true
-	Configure Components
-		LoginState=None: service-1/NoneSessionAPI
-			URL=/api/login
-		LoginState=None: service-2/LoginUI
-			URL=/
-			URL=/lib/
-		LoginState=Granted: service-1/GrantedSessionAPI
-			URL=/api/logout
-		LoginState=Granted: service-1/SPAAPI
-			URL=/api/fetch-ui
-			URL=/api/fetch-data
-		LoginState=Granted: service-1/SPAUI
-			URL=/
-			URL=/base/lib/
-			SPA-Code=base
-			SPA-Code=navigate
-			SPA-Code=widget-1
-			SPA-Code=widget-1
-		LoginState=Granted: service-2/component
-			SPA-Code=custom-widget-9
-			SPA-Config=xyz
+Router -> Applications (bundle-A, bundle-B, bundle-Z) returns
+```
+Configure LoginState
+	LoginState: None,prefix=/login/,consume-redirect=false
+	LoginState: Granted,prefix=/app/,consume-redirect=true
+Configure Components
+	LoginState=None: service-1/NoneSessionAPI
+		URL=/api/login
+	LoginState=None: service-2/LoginUI
+		URL=/
+		URL=/lib/
+	LoginState=Granted: service-1/GrantedSessionAPI
+		URL=/api/logout
+	LoginState=Granted: service-1/SPAAPI
+		URL=/api/fetch-ui
+		URL=/api/fetch-data
+	LoginState=Granted: service-1/SPAUI
+		URL=/
+		URL=/base/lib/
+		SPA-Code=base
+		SPA-Code=navigate
+		SPA-Code=widget-1
+		SPA-Code=widget-1
+	LoginState=Granted: service-2/component
+		SPA-Code=custom-widget-9
+		SPA-Config=xyz
+```
 
 Ensure no conflicts arise. If they do, disable both conflicting components,
 but still load the application as much as possible.
