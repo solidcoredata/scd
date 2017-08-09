@@ -11,29 +11,23 @@
 // The most important design will be the end application under login_granted
 // that will proof out various aspects of the system, including just-in-time
 // component handling.
-package scdhandler
+package handler
 
 import (
 	"context"
-	"crypto/tls"
+	"encoding/base64"
 	"fmt"
+	"hash"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strings"
-)
 
-/*
- * Client sends request to server.
- * HTTP Server receives request.
- * HTTP Server takes credential token(s) and send the token(s) to the Authentication Server to establish authentication, roles, and login state.
-   The result is attached to the request context.
-   - Login state (Logged Out, U2F Login Wait, Must Change Password, Logged In)
-   - Elevated state (Normal, Elevated Login)
- * HTTP Server sends entire request with context to application back-end, switching off of URL and Login State.
- * ...
-*/
+	"github.com/solidcoredata/scd/api"
+
+	"github.com/minio/blake2b-simd"
+)
 
 // LoginState is a single value for each possible state a login can be in
 // when checked.
@@ -55,6 +49,7 @@ const (
 	LoginGranted        LoginState = 3  // User has valid credentials.
 )
 
+// TODO how to return this correctly from an API?
 type HTTPError struct {
 	Status int
 	Msg    string
@@ -69,127 +64,13 @@ func (e HTTPError) Error() string {
 	return fmt.Sprintf("%d: %s", e.Status, msg)
 }
 
-type MountProvide struct {
-	// AllowCache should be set to true if the resource may be safely cached
-	// while the component is loaded.
-	AllowCache bool
-
-	// Mount at this point.
-	//  "/" Mount at the root.
-	//  "/lib/staic/" mount directory.
-	//  "/api/syscall" mount endpoint.
-	At string
-}
-type MountConsume struct {
-	At string
-}
-
-type Request struct {
-	// Method specifies the HTTP method (GET, POST, PUT, etc.).
-	// For client requests an empty string means GET.
-	Method string
-
-	// URL specifies either the URI being requested (for server
-	// requests) or the URL to access (for client requests).
-	//
-	// For server requests the URL is parsed from the URI
-	// supplied on the Request-Line as stored in RequestURI.  For
-	// most requests, fields other than Path and RawQuery will be
-	// empty. (See RFC 2616, Section 5.1.2)
-	// request.
-	URL *url.URL
-
-	// The protocol version for incoming server requests.
-	ProtoMajor int16 // 1
-	ProtoMinor int16 // 0
-
-	Header http.Header
-
-	// Body is the request's body.
-	Body []byte
-
-	// For server requests Host specifies the host on which the
-	// URL is sought. Per RFC 2616, this is either the value of
-	// the "Host" header or the host name given in the URL itself.
-	// It may be of the form "host:port". For international domain
-	// names, Host may be in Punycode or Unicode form. Use
-	// golang.org/x/net/idna to convert it to either format if
-	// needed.
-	//
-	// For client requests Host optionally overrides the Host
-	// header to send. If empty, the Request.Write method uses
-	// the value of URL.Host. Host may contain an international
-	// domain name.
-	Host string
-
-	ContentType string
-
-	// RemoteAddr allows HTTP servers and other software to record
-	// the network address that sent the request, usually for
-	// logging. This field is not filled in by ReadRequest and
-	// has no defined format. The HTTP server in this package
-	// sets RemoteAddr to an "IP:port" address before invoking a
-	// handler.
-	// This field is ignored by the HTTP client.
-	RemoteAddr string
-
-	// TLS allows HTTP servers and other software to record
-	// information about the TLS connection on which the request
-	// was received. This field is not filled in by ReadRequest.
-	// The HTTP server in this package sets the field for
-	// TLS-enabled connections before invoking a handler;
-	// otherwise it leaves the field nil.
-	// This field is ignored by the HTTP client.
-	TLS *tls.ConnectionState
-}
-
-type Response struct {
-	// Content type of the body.
-	ContentType string
-
-	// Encoding of the response. Often a compression method like "gzip" or "br".
-	Encoding string
-
-	Header http.Header
-
-	// Response body.
-	Body []byte
-}
-
-// AppHandler provides sufficent information to route incomming application
-// requests and partition the URL namespace.
-type AppHandler interface {
-	// URLPartition returns the URL prefix and if an available redirect
-	// should be removed path and if the prefix matches, redirected to.
-	// The prefix should start and end with a slash "/".
-	URLPartition() (prefix string, consumeRedirect bool)
-
-	// Init is called after the application is loaded.
-	Init(context.Context) error
-
-	// Request should be routed by the r.URL.Path field.
-	Request(ctx context.Context, r *Request) (*Response, error)
-}
-
-// AppComponentHandler provides sufficent information to route incomming application
-// requests and partition the URL namespace.
-type AppComponentHandler interface {
-	// Init is called after the application is loaded.
-	Init(context.Context) error
-
-	ProvideMounts(ctx context.Context) ([]MountProvide, error)
-
-	// Request should be routed by the r.URL.Path field.
-	Request(ctx context.Context, r *Request) (*Response, error)
-}
-
 // LoginStateRouter links login states with a routable handler.
 type LoginStateRouter struct {
-	State map[LoginState]AppHandler
+	State map[LoginState]api.AppHandlerClient
 
 	// Authenticator is sent the token as found in the request cookie.
 	// It is called after detaching the cookie value and before any routing has happened.
-	Authenticator Authenticator
+	Authenticator api.AuthClient
 }
 
 // URLRouter links an incomming URL Host with a LoginStateRouter.
@@ -208,8 +89,8 @@ type RouteHandler struct {
 }
 
 func (h *RouteHandler) Init(ctx context.Context) error {
-	uniqueAuth := make(map[Authenticator]bool, len(h.Router))
-	uniqueApp := make(map[AppHandler]bool, len(h.Router)*4)
+	uniqueAuth := make(map[api.AuthClient]bool, len(h.Router))
+	uniqueApp := make(map[api.AppHandlerClient]bool, len(h.Router)*4)
 
 	// Check each application handler to ensure the path prefix all
 	// start and end with a "/".
@@ -217,25 +98,16 @@ func (h *RouteHandler) Init(ctx context.Context) error {
 	// Add each authenticator and app to a unique map before calling Init on each.
 	for host, logins := range h.Router {
 		for state, login := range logins.State {
-			partition, _ := login.URLPartition()
-			if len(partition) == 0 || partition[0] != '/' || partition[len(partition)-1] != '/' {
+			partition, err := login.URLPartition(ctx, nil)
+			if err != nil {
+				return err
+			}
+			if len(partition.Prefix) == 0 || partition.Prefix[0] != '/' || partition.Prefix[len(partition.Prefix)-1] != '/' {
 				return fmt.Errorf(`URL Parition must begin and end with a slash "/" for %q for state %s.`, host, state)
 			}
 			uniqueApp[login] = true
 		}
 		uniqueAuth[logins.Authenticator] = true
-	}
-	for auth := range uniqueAuth {
-		err := auth.Init(ctx)
-		if err != nil {
-			return err
-		}
-	}
-	for app := range uniqueApp {
-		err := app.Init(ctx)
-		if err != nil {
-			return err
-		}
 	}
 
 	return nil
@@ -249,6 +121,23 @@ func (h *RouteHandler) logf(f string, v ...interface{}) {
 }
 
 const redirectQueryKey = "redirect-to"
+
+var tokenKeyHMAC = []byte(`solidcoredata`)
+var tokenKeyHasher hash.Hash
+
+func init() {
+	h, err := blake2b.New(&blake2b.Config{
+		Size: 4,
+		Key:  tokenKeyHMAC,
+	})
+	if err != nil {
+		panic("unable to create token key hasher")
+	}
+	tokenKeyHasher = h
+}
+func TokenKeyName(host string) string {
+	return strings.TrimRight(base64.RawURLEncoding.EncodeToString(tokenKeyHasher.Sum([]byte(host))), "=")
+}
 
 func (h *RouteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Get values of credential tokens from request.
@@ -266,9 +155,9 @@ func (h *RouteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	tokenKey := TokenKeyName(r.Host)
 
-	rs := &RequestAuth{}
+	rs := &api.RequestAuthResp{}
 	if c, err := r.Cookie(tokenKey); err == nil {
-		rs, err = urlrouter.Authenticator.RequestAuth(r.Context(), c.Value)
+		rs, err = urlrouter.Authenticator.RequestAuth(r.Context(), &api.RequestAuthReq{Token: c.Value})
 		if err != nil {
 			h.logf("scdhandler: unable to check auth %v", err)
 			http.Error(w, "failed to check auth", http.StatusInternalServerError)
@@ -277,7 +166,7 @@ func (h *RouteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	rs.TokenKey = tokenKey
 
-	next, ok := urlrouter.State[rs.LoginState]
+	next, ok := urlrouter.State[LoginState(rs.LoginState)]
 	if !ok {
 		http.Error(w, "login state 404", http.StatusNotFound)
 		return
@@ -285,8 +174,13 @@ func (h *RouteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Handle redirects to correct URL partition and redirects
 	// to protected applications.
-	prefix, useRedirect := next.URLPartition()
-	switch useRedirect {
+	partition, err := next.URLPartition(r.Context(), nil)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	prefix := partition.Prefix
+	switch partition.ConsumeRedirect {
 	case false:
 		// If the redirect query value should not be consumed (like on a login application),
 		// then set the redirect query key before redirecting.
@@ -324,7 +218,7 @@ func (h *RouteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	ctx := AuthNewContext(r.Context(), rs)
+	ctx := api.AuthNewContext(r.Context(), rs)
 	r.URL.Path = strings.TrimPrefix(r.URL.Path, prefix[:len(prefix)-1])
 
 	const readLimit = 1024 * 1024 * 100 // 100 MB. In the future make this property part of the AppHandler interface or RouteHandler.
@@ -334,17 +228,17 @@ func (h *RouteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	appReq := &Request{
-		Method:      r.Method,
-		URL:         r.URL,
-		ProtoMajor:  int16(r.ProtoMajor),
-		ProtoMinor:  int16(r.ProtoMinor),
-		Body:        body,
-		Header:      r.Header,
+	appReq := &api.RequestReq{
+		Method: r.Method,
+		// URL:         r.URL,
+		ProtoMajor: int32(r.ProtoMajor),
+		ProtoMinor: int32(r.ProtoMinor),
+		Body:       body,
+		// Header:      r.Header,
 		ContentType: r.Header.Get("Content-Type"),
 		Host:        r.Host,
 		RemoteAddr:  r.RemoteAddr,
-		TLS:         r.TLS,
+		// TLS:         r.TLS,
 	}
 
 	appResp, err := next.Request(ctx, appReq)
@@ -357,7 +251,7 @@ func (h *RouteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, msg, status.Status)
 			return
 		}
-		next, ok := urlrouter.State[rs.LoginState]
+		next, ok := urlrouter.State[LoginState(rs.LoginState)]
 		if !ok {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -376,11 +270,14 @@ func (h *RouteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if len(appResp.Encoding) > 0 {
 		w.Header().Set("Content-Encoding", appResp.Encoding)
 	}
-	for key, values := range appResp.Header {
-		for _, v := range values {
-			w.Header().Add(key, v)
+	// TODO fixme
+	/*
+		for key, values := range appResp.Header {
+			for _, v := range values {
+				w.Header().Add(key, v)
+			}
 		}
-	}
+	*/
 	w.WriteHeader(http.StatusOK)
 	w.Write(appResp.Body)
 }

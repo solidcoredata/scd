@@ -1,0 +1,106 @@
+// Copyright 2017 The Solid Core Data Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto3";
+
+package api;
+
+service AppHandler {
+	// URLPartition returns the URL prefix and if an available redirect
+	// should be removed path and if the prefix matches, redirected to.
+	// The prefix should start and end with a slash "/".
+	rpc URLPartition(URLPartitionReq) returns (URLPartitionResp) {}
+	
+	rpc Request(RequestReq) returns (RequestResp) {}
+}
+
+service AppComponentHandler {
+	// URLPartition returns the URL prefix and if an available redirect
+	// should be removed path and if the prefix matches, redirected to.
+	// The prefix should start and end with a slash "/".
+	rpc ProvideMount(ProvideMountReq) returns (ProvideMountResp) {}
+	
+	rpc Request(RequestReq) returns (RequestResp) {}
+}
+
+
+message URLPartitionReq {}
+message URLPartitionResp {
+	string Prefix = 1;
+	bool ConsumeRedirect = 2;
+}
+
+message RequestReq {
+	string Host = 1;
+	// Method specifies the HTTP method (GET, POST, PUT, etc.).
+	string Method = 2;
+	
+	// URL specifies either the URI being requested.
+	URL URL = 3;
+	
+	// The protocol version for incoming server requests.
+	int32 ProtoMajor = 4;
+	int32 ProtoMinor = 5;
+	
+	Header Header = 6;
+	
+	bytes Body = 7;
+	
+	string ContentType = 8;
+
+	// RemoteAddr allows HTTP servers and other software to record
+	// the network address that sent the request, usually for
+	// logging. This field is not filled in by ReadRequest and
+	// has no defined format. The HTTP server in this package
+	// sets RemoteAddr to an "IP:port" address before invoking a
+	// handler.
+	string RemoteAddr = 9;
+	
+	TLSState TLS = 10;
+	
+}
+message RequestResp {
+	// Content type of the body.
+	string ContentType = 1;
+	
+	// Encoding of the response. Often a compression method like "gzip" or "br".
+	string Encoding = 2;
+	
+	bytes Body = 3;
+}
+
+message URL {
+	// TODO
+}
+
+message Header {
+	// TODO
+}
+
+message TLSState {
+	uint32 Version = 1;
+	bool HandshakeComplete = 2;
+	bool DidResume = 3;
+	uint32 CipherSuite = 4;
+	string ServerName = 5;
+}
+
+message ProvideMountReq {}
+
+message ProvideMountResp {
+	repeated MountProvide List = 1;
+}
+
+message MountProvide {
+	// AllowCache should be set to true if the resource may be safely cached
+	// while the component is loaded.
+	bool AllowCache = 1;
+
+	// Mount at this point.
+	//  "/" Mount at the root.
+	//  "/lib/staic/" mount directory.
+	//  "/api/syscall" mount endpoint.
+	string At = 2;
+}
+

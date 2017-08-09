@@ -1,0 +1,93 @@
+// Copyright 2017 The Solid Core Data Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto3";
+
+package api;
+
+import "google/protobuf/timestamp.proto";
+
+service Auth {
+	// TODO: RequestAuth and Login should both take some additional features
+	// about where the request is coming from (HTTPS info, remote address).
+    rpc RequestAuth(RequestAuthReq) returns (RequestAuthResp) {}
+	rpc Login(LoginReq) returns (LoginResp) {}
+	
+	rpc Logout(LogoutReq) returns (LogoutResp) {}
+	
+	// NewPassword chooses a new password for the given identity.
+	// The identity must be notified of this change.
+	rpc NewPassword(NewPasswordReq) returns (NewPasswordResp) {}
+	
+	// ChangePassword updates the clients password. It should be used
+	// when the user is updating the password themselves.
+	rpc ChangePassword(ChangePasswordReq) returns (ChangePasswordResp) {}
+}
+
+
+message RequestAuthResp{
+	int64 LoginState = 1;
+	repeated int64 Roles = 2;
+	google.protobuf.Timestamp ElevatedUntil = 3;
+	
+	string TokenKey = 10;
+	
+	string Identity = 20;
+	string GivenName = 21;
+	string FamilyName = 22;
+}
+
+message RequestAuthReq {
+	string Token = 1;
+}
+
+message LoginReq {
+	string Identity = 1;
+	string Password = 2;
+}
+
+message LoginResp {
+	string SessionTokenValue = 1;
+}
+
+message LogoutReq {
+	oneof Value {
+		string SessionTokenValue = 1;
+		string Identity = 2;
+	}
+}
+
+message LogoutResp {
+}
+
+message NewPasswordReq {
+	string Identity = 1;
+}
+
+message NewPasswordResp {
+}
+
+message ChangePasswordReq {
+	// SessionTokenValue must be valid for the password to be changed.
+	string SessionTokenValue = 1;
+	
+	// CurrentPassword is not used if the login state is Change Password.
+	// In that state it is assumed the client has just authenticated and
+	// entering the current password again would be redundant.
+	string CurrentPassword = 2;
+	
+	// NewPassword to set. If the password is too weak it may be rejected.
+	string NewPassword = 3;
+}
+
+message ChangePasswordResp {
+	// Changed is true when the password was changed.
+	// If false the InvalidNewPasswordMessage text should
+	// be displayed to the user.
+	bool Changed = 1;
+	
+	// InvalidNewPasswordMessage is is set when Changed is true.
+	string InvalidNewPasswordMessage = 2;
+}
+
