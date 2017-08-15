@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package scdhandler provides various HTTP handlers for a server setup.
+// Package handler provides various HTTP handlers for a server setup.
 //
 // The design is that each "application" can be plugged into the system.
 // Eventually this will run in a k8s style components that are configured.
@@ -42,11 +42,11 @@ type LoginRole int64
 
 // Known login states.
 const (
-	LoginError          LoginState = -1 // Error in system configuration, load, or disconnected backend component.
-	LoginNone           LoginState = 0  // No credentials.
-	LoginU2F            LoginState = 1  // Require user to identify with second factor.
-	LoginChangePassword LoginState = 2  // Require user to change password.
-	LoginGranted        LoginState = 3  // User has valid credentials.
+	LoginError          LoginState = 0 // Error in system configuration, load, or disconnected backend component.
+	LoginNone           LoginState = 1 // No credentials.
+	LoginGranted        LoginState = 2 // User has valid credentials.
+	LoginU2F            LoginState = 3 // Require user to identify with second factor.
+	LoginChangePassword LoginState = 4 // Require user to change password.
 )
 
 // TODO how to return this correctly from an API?

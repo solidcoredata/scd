@@ -1,0 +1,146 @@
+// Copyright 2017 The Solid Core Data Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto3";
+
+package api;
+
+import "google/protobuf/empty.proto";
+import "auth.proto";
+
+// Routes is served by a non-router service to allow the router know what
+// routes it can respond to.
+service Routes {
+	rpc UpdateServiceBundle(google.protobuf.Empty) returns (stream ServiceBundle);
+	
+	// Update connected services information, such as other service locations and SPA code and configs.
+	rpc UpdateServiceConfig(ServiceConfig) returns (google.protobuf.Empty);
+}
+
+// RouterConfiguration 
+service RouterConfiguration {
+	rpc Notify(NotifyReq) returns (google.protobuf.Empty);
+	rpc Update(UpdateReq) returns (UpdateResp);
+}
+
+message NotifyReq {
+	string ServiceAddress = 1;
+}
+
+enum UpdateAction {
+	UpdateNOOP = 0;
+	UpdateInsert = 1;
+	UpdateAlter = 2;
+	UpdateDelete = 3;
+}
+
+message UpdateReq {
+	UpdateAction Action = 1;
+	string Bind = 2;
+	repeated string Host = 3;
+	repeated string Bundle = 4;
+}
+
+message UpdateResp {}
+
+message ServiceConfig {
+	// Send list of endpoints that it needs to know.
+	// Send list of SPA code and config and their endpoint names.
+}
+
+// Next draft.
+
+message ConfigureURL {
+	string MapTo = 1;
+}
+
+message ConfigureSPACode {
+	// Configuration of the SPA component. Right now that would be a JSON string.
+	//
+	// In the future want to configure both client and server.
+	string Configuration = 1;
+}
+message ConfigureAuth {
+	enum AreaType {
+		Unknown = 0;
+		System = 1;
+		User = 2;
+	}
+	AreaType Area = 1; // "Stage"
+	
+	// Environment name.
+	//   When AreaType=System, "QA" or "PROD".
+	///  When AreaType=User, "user-1" or "bobsmith".
+	string Environment = 2;
+}
+message ConfigureQuery {
+	string DSN = 1;
+}
+
+
+message PotentialResource {
+	enum ResourceType {
+		ResourceUnknown = 0;
+		ResourceURL = 1;
+		ResourceSPACode = 2;
+		ResourceAuth = 4;
+		ResourceQuery = 5;
+	}
+	string Name = 1;
+	ResourceType Type = 2;
+}
+
+message ConfiguredResource {
+	string Name = 1;
+	string PotentialResourceName = 2;
+	oneof Configuration {
+		ConfigureURL URL = 4;
+		ConfigureSPACode SPACode = 5;
+		ConfigureAuth Auth = 6;
+		ConfigureQuery Query = 7;
+	}
+}
+
+message Bundle {
+	// Name of the bundle, relative to the service name.
+	// May be "app" or "search-list-detail".
+	string Name = 1;
+	
+	// Include list of other resources this bundle should include.
+	repeated string Include = 3;
+}
+
+message LoginBundle {
+	LoginState LoginState = 1;
+	string Prefix = 2;
+	bool ConsumeRedirect = 3;
+	string Bundle = 4;
+}
+
+message ServiceBundle {
+	// Name is the base name for this service.
+	// If something references  "solidcoredata.org/example-1/app" and the base
+	// name is "solidcoredata.org/example-1", then the component name that is sent is "app".
+	// "solidcoredata.org/example-1" or "solidcoredata.org/library-1".
+	string Name = 1;
+	
+	// 1. Define the resource with PotentialResource.
+	repeated PotentialResource Potential = 2;
+	
+	// 2. Configure the resource with ConfiguredResource.
+	repeated ConfiguredResource Configured = 3;
+	
+	// 3. Bundle Configured Resources or other Bundles together
+	// with a Bundle.
+	repeated Bundle Bundle = 4;
+	
+	// 4. Associate a login state with a single bundle.
+	repeated LoginBundle LoginBundle = 5;
+	
+	// Configured resource for the authenticator.
+	string AuthConfiguredResource = 6;
+	
+	// Setup the host names to bind to.
+	repeated string Host = 7;
+}

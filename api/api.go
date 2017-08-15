@@ -1,8 +1,15 @@
+// Copyright 2017 The Solid Core Data Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+// Package api provides common interfaces and headers
 package api
 
-import "context"
+import (
+	"context"
+)
 
-//go:generate protoc --go_out=plugins=grpc:. auth.proto handler.proto
+//go:generate protoc --go_out=plugins=grpc:../api -I ../proto/ ../proto/auth.proto ../proto/request.proto ../proto/router.proto
 
 type requestAuthKey struct{}
 

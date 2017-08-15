@@ -2,82 +2,73 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// scdrouter accepts incomming connections and routes the requests to the
+// correct service. It also unifies the services into a single application.
 package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
-	"log"
-	"net/http"
+	"net"
 	"os"
 
 	"github.com/solidcoredata/scd/api"
-	"github.com/solidcoredata/scd/handler"
 
+	google_protobuf1 "github.com/golang/protobuf/ptypes/empty"
 	"google.golang.org/grpc"
 )
 
-func main() {
-	h, err := getRouteHandler()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "main: unable to create router: %v\n", err)
-		return
+const (
+	printMessage  = 1
+	printDefaults = 2
+)
+
+func onErr(t byte, msg string) {
+	if len(msg) > 0 {
+		fmt.Fprint(os.Stderr, msg)
+		fmt.Fprintln(os.Stderr)
 	}
-	for serveon := range h.Router {
-		go func(serveon string) {
-			err := http.ListenAndServe(serveon, h)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "main: unable to listen and serve on %q: %v\n", serveon, err)
-			}
-		}(serveon)
+	switch t {
+	case printMessage:
+		os.Exit(1)
+	case printDefaults:
+		flag.PrintDefaults()
+		os.Exit(2)
 	}
-	fmt.Println("ready")
-	select {}
+}
+func onErrf(t byte, f string, v ...interface{}) {
+	onErr(t, fmt.Sprintf(f, v...))
 }
 
-func getRouteHandler() (*handler.RouteHandler, error) {
-	ctx := context.TODO()
-	const (
-		authServer    = "localhost:7001"
-		exampleServer = "localhost:7002"
-	)
-	authConn, err := grpc.DialContext(ctx, authServer, grpc.WithInsecure())
-	if err != nil {
-		return nil, err
-	}
-	authClient := api.NewAuthClient(authConn)
+func main() {
+	const bindRPC = "localhost:9301"
 
-	exampleConn, err := grpc.DialContext(ctx, exampleServer, grpc.WithInsecure())
-	if err != nil {
-		return nil, err
-	}
-	exampleClient := api.NewAppHandlerClient(exampleConn)
+	server := grpc.NewServer()
+	s := &RouterServer{}
+	api.RegisterRouterConfigurationServer(server, s)
 
-	h := &handler.RouteHandler{
-		Router: handler.HostRouter{
-			"localhost:9786": handler.LoginStateRouter{
-				Authenticator: authClient,
-				State: map[handler.LoginState]api.AppHandlerClient{
-					//handler.LoginNone: compose.NewHandler(authSession, "/app/", true, granted.NewSessionHandler(authSession), spa.NewHandler(), granted.NewUIHandler()),
-					handler.LoginNone: exampleClient,
-				},
-			},
-			/*"localhost:9787": handler.LoginStateRouter{
-				Authenticator: authSession,
-				State: map[handler.LoginState]handler.AppHandler{
-					handler.LoginNone:    compose.NewHandler(authSession, "/login/", false, none.NewSessionHandler(authSession), none.NewUIHandler()),
-					handler.LoginGranted: compose.NewHandler(authSession, "/app/", true, granted.NewSessionHandler(authSession), spa.NewHandler(), granted.NewUIHandler()),
-				},
-			},*/
-		},
-		Loggerf: func(f string, a ...interface{}) {
-			log.Printf(f, a...)
-		},
-	}
-
-	err = h.Init(context.TODO())
+	l, err := net.Listen("tcp", bindRPC)
 	if err != nil {
-		return nil, fmt.Errorf("unable to init route handler: %v", err)
+		onErrf(printMessage, `unable to listen on %q: %v`, bindRPC, err)
 	}
-	return h, nil
+	defer l.Close()
+
+	err = server.Serve(l)
+	if err != nil {
+		onErrf(printMessage, `failed to serve on %q: %v`, bindRPC, err)
+	}
+}
+
+var _ api.RouterConfigurationServer = &RouterServer{}
+
+type RouterServer struct{}
+
+func (s *RouterServer) Notify(ctx context.Context, n *api.NotifyReq) (*google_protobuf1.Empty, error) {
+	fmt.Printf("service: %q\n", n.ServiceAddress)
+	return &google_protobuf1.Empty{}, nil
+}
+func (s *RouterServer) Update(ctx context.Context, u *api.UpdateReq) (*api.UpdateResp, error) {
+	fmt.Printf("Update: action=%q bind=%q bundle=%q host=%q", u.Action, u.Bind, u.Bundle, u.Host)
+	return &api.UpdateResp{}, nil
 }

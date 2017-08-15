@@ -289,3 +289,42 @@ It is likely that we can have the Router be a generic registry that updates
 dependents on configuration events.
 The endpoints need to know the types (gRPC intefaces), but the Router does not.
 
+---
+
+A service may need to respond differently to the same request values if the request
+comes from different applications. For example Auth server needs to know if
+the application is the PROD, QA, or USER:<user-1> environment, as each have different
+authorized parties. Query servers will also need to know what the environment and
+application it is from.
+
+It seems like when the bundles are being created, configurations need to be
+attached. When bundle items are created the configuration items that are expected
+should be declared. Configuration values should not be application names; configuration
+values should be:
+
+ * environment (PROD, QA, USER:<user-1>)
+ * data source (pg://db-server:3000/db1, sqlserver://db-server:4000/db2)
+ * maybe widget configuration instances too
+
+To define some terms that leak useage:
+
+ * Potential Resource: a resource that may not be directly used to compose
+   an application. It must first be paired with a configuration to be used.
+   Examples include a widget type, an authentication service, a query service,
+   a database.
+ * Configured Resource: a resource that may be used to compose an application.
+   Examples include a widget to list specific numbers, a QA authenticator, a
+   specific database instnace with credentials.
+ * Potential Bundle: a collection of Potential Resources. It may not include
+   any Configured Resource. All the Ptential Resources must contain the same
+   type of configuration.
+   An example is an authenticator, a logout URL, and a login URL.
+ * [Configured] Bundle: a collection of Configured Resources. It may not include
+   any Potential Bundles or Potential Resources.
+   Eventually an application serves a single configured bundle.
+
+All items are given unique names. A Potential resource "search-list-detail" widget
+and a specific configuration is used to create the new configured resource
+"user-list". The "user-list" can now be referenced directly.
+
+

@@ -11,31 +11,49 @@ import "google/protobuf/timestamp.proto";
 service Auth {
 	// TODO: RequestAuth and Login should both take some additional features
 	// about where the request is coming from (HTTPS info, remote address).
-    rpc RequestAuth(RequestAuthReq) returns (RequestAuthResp) {}
-	rpc Login(LoginReq) returns (LoginResp) {}
+    rpc RequestAuth(RequestAuthReq) returns (RequestAuthResp);
+}
+
+/*
+	rpc Login(LoginReq) returns (LoginResp);
 	
-	rpc Logout(LogoutReq) returns (LogoutResp) {}
+	rpc Logout(LogoutReq) returns (LogoutResp);
 	
 	// NewPassword chooses a new password for the given identity.
 	// The identity must be notified of this change.
-	rpc NewPassword(NewPasswordReq) returns (NewPasswordResp) {}
+	rpc NewPassword(NewPasswordReq) returns (NewPasswordResp);
 	
 	// ChangePassword updates the clients password. It should be used
 	// when the user is updating the password themselves.
-	rpc ChangePassword(ChangePasswordReq) returns (ChangePasswordResp) {}
+	rpc ChangePassword(ChangePasswordReq) returns (ChangePasswordResp);
+}
+*/
+
+enum LoginState {
+	Missing = 0;
+	Error = 1;
+	None = 2;
+	Granted = 3;
+	U2F = 4;
+	ChangePassword = 5;
 }
 
-
 message RequestAuthResp{
-	int64 LoginState = 1;
-	repeated int64 Roles = 2;
-	google.protobuf.Timestamp ElevatedUntil = 3;
+	LoginState LoginState = 1;
+	int64 ID = 2;
+	string Identity = 3;
+	repeated int64 Roles = 4;
+	
+	google.protobuf.Timestamp ValidUntil = 5;
+	google.protobuf.Timestamp ElevatedUntil = 6;
+	
+	string GivenName = 7;
+	string FamilyName = 8;
+	string Email = 9;
 	
 	string TokenKey = 10;
 	
-	string Identity = 20;
-	string GivenName = 21;
-	string FamilyName = 22;
+	RequestAuthResp Secondary = 11;
 }
 
 message RequestAuthReq {
