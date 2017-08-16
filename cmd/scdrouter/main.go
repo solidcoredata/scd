@@ -42,7 +42,7 @@ func onErrf(t byte, f string, v ...interface{}) {
 }
 
 func main() {
-	const bindRPC = "localhost:9301"
+	const bindRPC = ":9301"
 
 	server := grpc.NewServer()
 	s := &RouterServer{}
@@ -65,7 +65,20 @@ var _ api.RouterConfigurationServer = &RouterServer{}
 type RouterServer struct{}
 
 func (s *RouterServer) Notify(ctx context.Context, n *api.NotifyReq) (*google_protobuf1.Empty, error) {
-	fmt.Printf("service: %q\n", n.ServiceAddress)
+	// For testing attempt to hit the service right back to ensure the service
+	// address is good.
+	ok := false
+	conn, err := grpc.DialContext(ctx, n.ServiceAddress, grpc.WithInsecure())
+	if err == nil {
+		defer conn.Close()
+
+		client := api.NewRoutesClient(conn)
+		_, err = client.UpdateServiceConfig(ctx, &api.ServiceConfig{})
+		if err == nil {
+			ok = true
+		}
+	}
+	fmt.Printf("service=%q ok=%t\n", n.ServiceAddress, ok)
 	return &google_protobuf1.Empty{}, nil
 }
 func (s *RouterServer) Update(ctx context.Context, u *api.UpdateReq) (*api.UpdateResp, error) {

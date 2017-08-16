@@ -7,15 +7,19 @@ package service
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"net"
 	"os"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/solidcoredata/scd/api"
 
 	google_protobuf1 "github.com/golang/protobuf/ptypes/empty"
+	"github.com/google/trillian/client/backoff"
 	"google.golang.org/grpc"
 )
 
@@ -73,7 +77,14 @@ func Setup(ctx context.Context, sc ServiceConfigration) {
 	}
 	defer l.Close()
 	if len(routerAddress) > 0 {
-		go registerOnRouter(ctx, routerAddress, l.Addr().String())
+		serviceAddress, err := resolveServiceAddress(l.Addr(), routerAddress)
+		if err != nil {
+			// Error with an exit because this service won't register
+			// to the router as expected. This is not expected to error
+			// without some type of fatal configuration error.
+			onErrf(printMessage, `unable to register with router %v`, err)
+		}
+		go registerOnRouter(ctx, routerAddress, serviceAddress)
 	}
 
 	err = server.Serve(l)
@@ -82,19 +93,84 @@ func Setup(ctx context.Context, sc ServiceConfigration) {
 	}
 }
 
+// resolveServiceAddress attempts to return the routable IP:port address
+// of the local system if the bind address is unspecified (bind to all ports).
+//
+// On any issue it falls back to the bind address.
+func resolveServiceAddress(laddr net.Addr, routerAddress string) (string, error) {
+	addr, is := laddr.(*net.TCPAddr)
+	if !is {
+		return laddr.String(), nil
+	}
+	if !addr.IP.IsUnspecified() {
+		return addr.String(), nil
+	}
+
+	list, err := net.InterfaceAddrs()
+	if err != nil {
+		return "", fmt.Errorf("service: unable to iterate interfaces %v", err)
+	}
+	// Attempt to find IP address of router address in the case of multiple
+	// local host interfaces.
+	routerHost := strings.Split(routerAddress, ":")[0]
+	routerIP := net.ParseIP(routerHost)
+	if routerIP == nil {
+		routerNet, _ := net.ResolveIPAddr("ip", routerHost)
+		if routerNet != nil {
+			routerIP = routerNet.IP
+		}
+	}
+	// Still return a loopback interface if no other router IP can be found.
+	// May want to split this out in the future, so local IP addresses
+	// are detected and handled in another way.
+	loopback := ""
+	for _, a := range list {
+		a, is := a.(*net.IPNet)
+		if !is {
+			continue
+		}
+		if routerIP != nil && !a.Contains(routerIP) {
+			continue
+		}
+		if a.IP.IsLoopback() {
+			loopback = fmt.Sprintf("%s:%d", a.IP, addr.Port)
+			continue
+		}
+		return fmt.Sprintf("%s:%d", a.IP, addr.Port), nil
+	}
+	if len(loopback) > 0 {
+		return loopback, nil
+	}
+	return "", fmt.Errorf("service: unable to find external service address for %q", laddr.String())
+}
+
+// registerOnRouter informs the router at routerAddress this service at serviceAddress.
 func registerOnRouter(ctx context.Context, routerAddress, serviceAddress string) {
-	// TODO(kardianos): This needs to send the service address every time the router is started.
-	conn, err := grpc.DialContext(ctx, routerAddress, grpc.WithInsecure())
+	conn, err := grpc.DialContext(ctx, routerAddress, grpc.WithInsecure(), grpc.WithBackoffConfig(grpc.BackoffConfig{MaxDelay: time.Second * 5}))
 	if err != nil {
 		onErrf(printMessage, "unable to connect to router: %v", err)
 	}
 	defer conn.Close()
-
 	client := api.NewRouterConfigurationClient(conn)
-	_, err = client.Notify(ctx, &api.NotifyReq{ServiceAddress: serviceAddress})
-	if err != nil {
-		onErrf(printMessage, "unable to update router: %v", err)
+
+	notReady := errors.New("remote not ready")
+	bo := &backoff.Backoff{
+		Min:    time.Millisecond * 400,
+		Max:    time.Second * 5,
+		Jitter: true,
+		Factor: 1.2,
 	}
+	bo.Retry(ctx, func() error {
+		_, err := client.Notify(ctx, &api.NotifyReq{ServiceAddress: serviceAddress})
+		if err != nil {
+			return err
+		}
+		bo.Reset()
+		if conn.WaitForStateChange(ctx, grpc.Ready) {
+			return notReady
+		}
+		return nil // Context was canceled, return.
+	})
 }
 
 type routesService struct {
@@ -183,5 +259,5 @@ func (r *routesService) UpdateServiceBundle(arg0 *google_protobuf1.Empty, server
 }
 
 func (r *routesService) UpdateServiceConfig(ctx context.Context, config *api.ServiceConfig) (*google_protobuf1.Empty, error) {
-	return nil, nil
+	return &google_protobuf1.Empty{}, nil
 }
