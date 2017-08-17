@@ -76,6 +76,32 @@ to a deployable unit. The primary target (and only target at this time) is
 the HTTP server. The compilation step verifies all queries are valid,
 and all fields correclty reference valid columns.
 
+### Goals
+
+ * Make it easy to create a single applications in multiple programming
+   languages at once.
+ * Make it easy to avoid the monolith.
+ * Make the database schema definition explicit for all and any version
+   of an application. Series of alter scripts do not define the schema .
+ * Make a clean way to compose the set the javascript controls the SPA uses.
+ * Authentication must be done out-of-process. This allows all environments to
+   use the same user list.
+ * Creating a control, then configuring an instance of it, should be the pattern
+   used both client side and server side.
+   - Client side a generic search-list-detail is defined, then it is used
+     and configured many times.
+   - Server side a custom email sending routine is defined, then configured
+     for a given database and email hosting provider.
+   - Custom controls that are only used once will still be created with most
+     application, but they would follow the same pattern.
+   - Controls should not aim to do everything. Make one control do one thing
+     well. Configuration should define field sets and small behavior differences.
+ * A single data model, the table set, should be used for all data transfer
+   and data model needs.
+ * Static verification of the application happens outside of service compilation,
+   and will involve many configurations and services, written in various
+   programming languages.
+
 ### Non-goals
 
  * Don't try to make development faster. This might happen,
