@@ -118,6 +118,17 @@ message LoginBundle {
 	string Bundle = 4;
 }
 
+message ApplicationBundle {
+	// Associate a login state with a single bundle.
+	repeated LoginBundle LoginBundle = 5;
+	
+	// Configured resource for the authenticator.
+	string AuthConfiguredResource = 6;
+	
+	// Setup the host names to bind to.
+	repeated string Host = 7;
+}
+
 message ServiceBundle {
 	// Name is the base name for this service.
 	// If something references  "solidcoredata.org/example-1/app" and the base
@@ -135,12 +146,7 @@ message ServiceBundle {
 	// with a Bundle.
 	repeated Bundle Bundle = 4;
 	
-	// 4. Associate a login state with a single bundle.
-	repeated LoginBundle LoginBundle = 5;
-	
-	// Configured resource for the authenticator.
-	string AuthConfiguredResource = 6;
-	
-	// Setup the host names to bind to.
-	repeated string Host = 7;
+	// 4. Bundle Login bundles together with an auth configured resource and
+	// host name list to define an application that can be served.
+	repeated ApplicationBundle Application = 5;
 }

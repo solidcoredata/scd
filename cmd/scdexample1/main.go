@@ -78,23 +78,27 @@ func (s *ServiceConfig) createConfig() *api.ServiceBundle {
 				},
 			},
 		},
-		LoginBundle: []*api.LoginBundle{
+		Application: []*api.ApplicationBundle{
 			{
-				LoginState:      api.LoginState_None,
-				Prefix:          "/login/",
-				ConsumeRedirect: false,
-				Bundle:          "example-1.solidcoredata.org/app/none",
-			},
-			{
-				LoginState:      api.LoginState_Granted,
-				Prefix:          "/app/",
-				ConsumeRedirect: true,
-				Bundle:          "example-1.solidcoredata.org/app/granted",
+				LoginBundle: []*api.LoginBundle{
+					{
+						LoginState:      api.LoginState_None,
+						Prefix:          "/login/",
+						ConsumeRedirect: false,
+						Bundle:          "example-1.solidcoredata.org/app/none",
+					},
+					{
+						LoginState:      api.LoginState_Granted,
+						Prefix:          "/app/",
+						ConsumeRedirect: true,
+						Bundle:          "example-1.solidcoredata.org/app/granted",
+					},
+				},
+
+				AuthConfiguredResource: "example-1.solidcoredata.org/app/auth/endpoint",
+				Host: []string{"example1.solidcoredata.local"},
 			},
 		},
-
-		AuthConfiguredResource: "example-1.solidcoredata.org/app/auth/endpoint",
-		Host: []string{"example1.solidcoredata.local"},
 	}
 	return c
 }

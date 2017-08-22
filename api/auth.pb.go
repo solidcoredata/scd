@@ -38,6 +38,7 @@ It has these top-level messages:
 	ConfiguredResource
 	Bundle
 	LoginBundle
+	ApplicationBundle
 	ServiceBundle
 */
 package api
