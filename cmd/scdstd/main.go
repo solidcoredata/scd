@@ -154,6 +154,8 @@ func (s *ServiceConfig) Request(ctx context.Context, r *api.RequestReq) (*api.Re
 	case "favicon":
 		var c color.Color
 		switch r.Auth.LoginState {
+		default:
+			c = color.RGBA{B: 255, A: 255}
 		case api.LoginState_Granted:
 			c = color.RGBA{G: 255, A: 255}
 		case api.LoginState_None:

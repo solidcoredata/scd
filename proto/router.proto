@@ -61,19 +61,6 @@ message ConfigureSPACode {
 	// In the future want to configure both client and server.
 	string Configuration = 1;
 }
-message ConfigureAuth {
-	enum AreaType {
-		Unknown = 0;
-		System = 1;
-		User = 2;
-	}
-	AreaType Area = 1; // "Stage"
-	
-	// Environment name.
-	//   When AreaType=System, "QA" or "PROD".
-	///  When AreaType=User, "user-1" or "bobsmith".
-	string Environment = 2;
-}
 message ConfigureQuery {
 	string DSN = 1;
 }

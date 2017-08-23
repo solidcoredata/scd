@@ -85,6 +85,7 @@ func (am *AuthenticateMemory) RequestAuth(ctx context.Context, token string) (*a
 
 	t, ok := am.Tokens[token]
 	if !ok {
+		ra.LoginState = api.LoginState_None
 		return ra, nil
 	}
 	u, ok := am.UserSetup[t.Identity]

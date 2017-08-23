@@ -10,11 +10,15 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
+	"strings"
 	"sync"
 
 	"github.com/solidcoredata/scd/api"
@@ -81,40 +85,170 @@ func (s *RouterServer) startHTTP(ctx context.Context, bindHTTP string) {
 }
 
 func (s *RouterServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	const redirectQueryKey = "redirect-to"
 	s.lk.RLock()
-	app, found := s.router.App[r.Host]
+	appToken, found := s.router.App[r.Host]
 	s.lk.RUnlock()
 
 	if !found {
 		http.Error(w, "host record not found", http.StatusNotFound)
 		return
 	}
+	app := appToken.App
 
-	_ = app.AuthConfig
-	// TODO(kardianos): attach token and auth config to request.
+	token := ""
+	if c, err := r.Cookie(appToken.TokenKey); err == nil {
+		token = c.Value
+	}
+
+	if app.Auth == nil {
+		http.Error(w, "auth not configured", http.StatusInternalServerError)
+		return
+	}
 	authResp, err := app.Auth.RequestAuth(r.Context(), &api.RequestAuthReq{
-		Token: "X",
+		Token:         token,
+		Configuration: app.AuthConfig,
 	})
 	if err != nil {
 		http.Error(w, "auth: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	authResp.TokenKey = appToken.TokenKey
 
 	lb, found := app.LoginBundle[authResp.LoginState]
 	if !found {
 		http.Error(w, "unconfigured login state: "+authResp.LoginState.String(), http.StatusInternalServerError)
 		return
 	}
+	ctx := r.Context()
+
+	switch lb.ConsumeRedirect {
+	case false:
+		// If the redirect query value should not be consumed (like on a login application),
+		// then set the redirect query key before redirecting.
+		if strings.HasPrefix(r.URL.Path, lb.Prefix) == false {
+			redirectQuery := url.Values{}
+			if strings.Count(r.URL.Path, "/") >= 2 {
+				redirectQuery.Set(redirectQueryKey, r.URL.RequestURI())
+			}
+			nextURL := &url.URL{Path: lb.Prefix, RawQuery: redirectQuery.Encode()}
+			http.Redirect(w, r, nextURL.String(), http.StatusTemporaryRedirect)
+			return
+		}
+	case true:
+		rq := r.URL.Query()
+		nextURL := rq.Get(redirectQueryKey)
+		if len(nextURL) > 0 {
+			// If there is not a prefix match, then remove it from
+			// the query string and redirect to the same URL but without the
+			// redirect.
+			if !strings.HasPrefix(nextURL, lb.Prefix) {
+				rq.Del(redirectQueryKey)
+				r.URL.RawQuery = rq.Encode()
+				nextURL = r.URL.String()
+			}
+
+			http.Redirect(w, r, nextURL, http.StatusTemporaryRedirect)
+			return
+		}
+
+		// There is no redirect, but the prefix does not match the URL path.
+		// Redirect to the correct prefix.
+		if strings.HasPrefix(r.URL.Path, lb.Prefix) == false {
+			http.Redirect(w, r, lb.Prefix, http.StatusTemporaryRedirect)
+			return
+		}
+	}
+
+	r.URL.Path = strings.TrimPrefix(r.URL.Path, lb.Prefix[:len(lb.Prefix)-1])
 
 	cr, found := lb.URLRouter[r.URL.Path]
 	if !found {
-		http.Error(w, "path not found", http.StatusNotFound)
+		http.Error(w, fmt.Sprintf("path not found %q", r.URL.Path), http.StatusNotFound)
 		return
 	}
 
-	_ = cr
-	// TODO(kardianos): In setup setup client router. Then here translate the HTTP
-	// request and call API to server.
+	const readLimit = 1024 * 1024 * 100 // 100 MB. In the future make this property part of the AppHandler interface or RouteHandler.
+	body, err := ioutil.ReadAll(io.LimitReader(r.Body, readLimit))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var tls *api.TLSState
+	if r.TLS != nil {
+		tls = &api.TLSState{
+			Version:           uint32(r.TLS.Version),
+			HandshakeComplete: r.TLS.HandshakeComplete,
+			DidResume:         r.TLS.DidResume,
+			CipherSuite:       uint32(r.TLS.CipherSuite),
+			ServerName:        r.TLS.ServerName,
+		}
+	}
+
+	appReq := &api.RequestReq{
+		Method: r.Method,
+		URL: &api.URL{
+			Host:  r.URL.Host,
+			Path:  cr.PR.Name, // r.URL.Path,
+			Query: api.NewKeyValueList(r.URL.Query()),
+		},
+		ProtoMajor:  int32(r.ProtoMajor),
+		ProtoMinor:  int32(r.ProtoMinor),
+		Body:        body,
+		Header:      api.NewKeyValueList(r.Header),
+		ContentType: r.Header.Get("Content-Type"),
+		Host:        r.Host,
+		RemoteAddr:  r.RemoteAddr,
+		TLS:         tls,
+		Auth:        authResp,
+	}
+
+	appResp, err := cr.PR.Handler.Request(ctx, appReq)
+	if err != nil {
+		/*if status, ok := err.(HTTPError); ok {
+			msg := status.Msg
+			if len(msg) == 0 {
+				msg = status.Err.Error()
+			}
+			http.Error(w, msg, status.Status)
+			return
+		}*/
+		lb, found := app.LoginBundle[api.LoginState_Error]
+		if !found {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		cr, found := lb.URLRouter["/"]
+		if !found {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		appReq.ContentType = "error"
+		appReq.Body = []byte(err.Error())
+		appResp, err = cr.PR.Handler.Request(ctx, appReq)
+		if err != nil {
+			http.Error(w, "unable to render error page: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+	if len(appResp.ContentType) > 0 {
+		w.Header().Set("Content-Type", appResp.ContentType)
+	}
+	if len(appResp.Encoding) > 0 {
+		w.Header().Set("Content-Encoding", appResp.Encoding)
+	}
+
+	if appResp.Header != nil {
+		for key, values := range appResp.Header.Values {
+			for _, v := range values.Value {
+				w.Header().Add(key, v)
+			}
+		}
+	}
+	w.WriteHeader(http.StatusOK)
+	w.Write(appResp.Body)
+
 }
 
 var _ api.RouterConfigurationServer = &RouterServer{}
@@ -203,16 +337,21 @@ func NewRouterRun() *RouterRun {
 		Potential:  make(map[string]*PR),
 		Configured: make(map[string]*CR),
 		Bundle:     make(map[string]*Bundle),
-		App:        make(map[string]*App),
+		App:        make(map[string]AppToken),
 	}
 	return rr
+}
+
+type AppToken struct {
+	TokenKey string
+	App      *App
 }
 
 type RouterRun struct {
 	Potential  map[string]*PR
 	Configured map[string]*CR
 	Bundle     map[string]*Bundle
-	App        map[string]*App
+	App        map[string]AppToken
 
 	Errors []string
 }
@@ -221,6 +360,8 @@ type PR struct {
 	Type          api.PotentialResource_ResourceType
 	ServiceBundle *api.ServiceBundle
 	Service       *serviceDef
+
+	Handler api.RequestHanderClient
 }
 type CR struct {
 	Name          string
@@ -280,13 +421,15 @@ func (rr *RouterRun) resolveNames() {
 			b.Include = append(b.Include, cr)
 		}
 	}
-	for _, a := range rr.App {
+	for _, at := range rr.App {
+		a := at.App
 		if len(a.AuthName) == 0 {
 			rr.AddError("app on %q missing authentication", a.Host)
 		} else {
-			if cr, found := rr.Configured[a.AuthName]; found && cr.Service != nil {
+			if cr, found := rr.Configured[a.AuthName]; found && cr.PR != nil && cr.PR.Service != nil {
 				a.Auth = api.NewAuthClient(cr.PR.Service.conn)
 				a.AuthConfig = cr.CAuth
+				fmt.Printf("send traffic from %q to %q\n", a.Host, cr.PR.Service.sb.Name)
 			} else {
 				rr.AddError("app on %q unable to resolve authenticator %q", a.AuthName)
 			}
@@ -317,13 +460,16 @@ func (s *RouterServer) updateCompleteLocked() {
 	// resource verification.
 	rr := NewRouterRun()
 	for _, s := range s.services {
+		locals := s
+		handler := api.NewRequestHanderClient(s.conn)
 		for _, p := range s.sb.Potential {
 			name := path.Join(s.sb.Name, p.Name)
 			rr.Potential[name] = &PR{
-				Name:          name,
+				Name:          p.Name,
 				Type:          p.Type,
 				ServiceBundle: s.sb,
-				Service:       &s,
+				Service:       &locals,
+				Handler:       handler,
 			}
 		}
 		for _, cr := range s.sb.Configured {
@@ -336,7 +482,7 @@ func (s *RouterServer) updateCompleteLocked() {
 				CURL:          cr.GetURL(),
 				CQuery:        cr.GetQuery(),
 				ServiceBundle: s.sb,
-				Service:       &s,
+				Service:       &locals,
 			}
 		}
 		for _, b := range s.sb.Bundle {
@@ -352,8 +498,14 @@ func (s *RouterServer) updateCompleteLocked() {
 				AuthName:    a.AuthConfiguredResource,
 				LoginBundle: make(map[api.LoginState]*LoginBundle, len(a.LoginBundle)),
 			}
-			for _, h := range app.Host {
-				rr.App[h] = app
+			for _, h := range a.Host {
+				rr.App[h] = AppToken{
+					App: app,
+
+					// Unique cookie key per host. Cookies are shared per hostname
+					// and ignore port differences.
+					TokenKey: tokenKeyName(h),
+				}
 			}
 			for _, lb := range a.LoginBundle {
 				app.LoginBundle[lb.LoginState] = &LoginBundle{

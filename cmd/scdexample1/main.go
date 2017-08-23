@@ -57,7 +57,7 @@ func (s *ServiceConfig) createConfig() *api.ServiceBundle {
 			{Name: "ui/loader", PotentialResourceName: "solidcoredata.org/base/loader", Configuration: &api.ConfiguredResource_URL{URL: &api.ConfigureURL{MapTo: "/"}}},
 			{Name: "ui/init.js", PotentialResourceName: "solidcoredata.org/base/init.js", Configuration: &api.ConfiguredResource_URL{URL: &api.ConfigureURL{MapTo: "/api/init.js"}}},
 			{Name: "ui/fetch-ui", PotentialResourceName: "solidcoredata.org/base/fetch-ui", Configuration: &api.ConfiguredResource_URL{URL: &api.ConfigureURL{MapTo: "/api/fetch-ui"}}},
-			{Name: "ui/favicon", PotentialResourceName: "solidcoredata.org/base/favicon", Configuration: &api.ConfiguredResource_URL{URL: &api.ConfigureURL{MapTo: "/api/favicon"}}},
+			{Name: "ui/favicon", PotentialResourceName: "solidcoredata.org/base/favicon", Configuration: &api.ConfiguredResource_URL{URL: &api.ConfigureURL{MapTo: "/ui/favicon"}}},
 		},
 		Bundle: []*api.Bundle{
 			{
@@ -65,6 +65,7 @@ func (s *ServiceConfig) createConfig() *api.ServiceBundle {
 				Include: []string{
 					"example-1.solidcoredata.org/app/auth/login",
 					"example-1.solidcoredata.org/app/ui/login",
+					"example-1.solidcoredata.org/app/ui/favicon",
 				},
 			},
 			{
@@ -96,7 +97,7 @@ func (s *ServiceConfig) createConfig() *api.ServiceBundle {
 				},
 
 				AuthConfiguredResource: "example-1.solidcoredata.org/app/auth/endpoint",
-				Host: []string{"example1.solidcoredata.local"},
+				Host: []string{"example1.solidcoredata.local:8301"},
 			},
 		},
 	}

@@ -95,23 +95,18 @@ func (s *ServiceConfig) Request(ctx context.Context, r *api.RequestReq) (*api.Re
 		if err != nil {
 			return nil, grpc.Errorf(codes.PermissionDenied, "bad login: %v", err)
 		}
-		rs, found := api.AuthFromContext(ctx)
-		if !found {
-			panic("no auth context")
-		}
-		resp.Header = &api.KeyValueList{}
+		rs := r.Auth
+		resp.Header = api.NewKeyValueList(nil)
 		// TODO(kardianos): set exire time, secure=true, strict origin.
-		resp.Header.Add("Set-Cookie", (&http.Cookie{
+		c := &http.Cookie{
 			Name:     rs.TokenKey,
 			Value:    token,
 			Path:     "/",
 			HttpOnly: true,
-		}).String())
-	case "logout":
-		rs, found := api.AuthFromContext(ctx)
-		if !found {
-			panic("no auth context")
 		}
+		resp.Header.Add("Set-Cookie", c.String())
+	case "logout":
+		rs := r.Auth
 		c, err := r.Cookie(rs.TokenKey)
 		if err != nil {
 			// If there is no cookie, user may already be logged out.
@@ -121,7 +116,7 @@ func (s *ServiceConfig) Request(ctx context.Context, r *api.RequestReq) (*api.Re
 		if err != nil {
 			return nil, fmt.Errorf("unable to logout: %v", err)
 		}
-		resp.Header = &api.KeyValueList{}
+		resp.Header = api.NewKeyValueList(nil)
 		// TODO(kardianos): set exire time, secure=true, strict origin.
 		c = &http.Cookie{
 			Name:   rs.TokenKey,
