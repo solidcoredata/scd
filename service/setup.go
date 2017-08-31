@@ -48,8 +48,9 @@ func onErrf(t byte, f string, v ...interface{}) {
 // ServiceConfiguration
 type ServiceConfigration interface {
 	ServiceBundle() chan *api.ServiceBundle
-	RequestHanderServer() (api.RequestHanderServer, bool)
+	HTTPServer() (api.HTTPServer, bool)
 	AuthServer() (api.AuthServer, bool)
+	SPAServer() (api.SPAServer, bool)
 }
 
 func Setup(ctx context.Context, sc ServiceConfigration) {
@@ -64,11 +65,14 @@ func Setup(ctx context.Context, sc ServiceConfigration) {
 	server := grpc.NewServer()
 	api.RegisterRoutesServer(server, newRoutes(ctx, sc))
 
-	if handler, is := sc.RequestHanderServer(); is {
-		api.RegisterRequestHanderServer(server, handler)
+	if handler, is := sc.HTTPServer(); is {
+		api.RegisterHTTPServer(server, handler)
 	}
 	if handler, is := sc.AuthServer(); is {
 		api.RegisterAuthServer(server, handler)
+	}
+	if handler, is := sc.SPAServer(); is {
+		api.RegisterSPAServer(server, handler)
 	}
 
 	l, err := net.Listen("tcp", bindAddress)

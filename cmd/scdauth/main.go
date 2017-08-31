@@ -69,15 +69,18 @@ func (s *ServiceConfig) createConfig() *api.ServiceBundle {
 func (s *ServiceConfig) ServiceBundle() chan *api.ServiceBundle {
 	return s.bundle
 }
-func (s *ServiceConfig) RequestHanderServer() (api.RequestHanderServer, bool) {
+func (s *ServiceConfig) HTTPServer() (api.HTTPServer, bool) {
 	return s, true
 }
 func (s *ServiceConfig) AuthServer() (api.AuthServer, bool) {
 	return s, true
 }
+func (s *ServiceConfig) SPAServer() (api.SPAServer, bool) {
+	return nil, false
+}
 
-func (s *ServiceConfig) Request(ctx context.Context, r *api.RequestReq) (*api.RequestResp, error) {
-	resp := &api.RequestResp{}
+func (s *ServiceConfig) ServeHTTP(ctx context.Context, r *api.HTTPRequest) (*api.HTTPResponse, error) {
+	resp := &api.HTTPResponse{}
 	// TODO(kardianos): determine best way to notify client of bad login.
 	switch r.URL.Path {
 	default:

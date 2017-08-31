@@ -44,15 +44,28 @@ message UpdateReq {
 
 message UpdateResp {}
 
+message ServiceConfigEndpoint {
+	string Name = 1;
+	string Endpoint = 2;
+	repeated ConfiguredResource Configured = 3;
+}
+
+enum ServiceConfigAction {
+	Add = 0;
+	Remove = 1;
+}
+
 message ServiceConfig {
-	// Send list of endpoints that it needs to know.
-	// Send list of SPA code and config and their endpoint names.
+	string Version = 1;
+	ServiceConfigAction Action = 2;
+	repeated ServiceConfigEndpoint List = 3;
 }
 
 // Next draft.
 
 message ConfigureURL {
 	string MapTo = 1;
+	string Config = 2;
 }
 
 message ConfigureSPACode {
@@ -65,7 +78,11 @@ message ConfigureQuery {
 	string DSN = 1;
 }
 
-
+enum Consume {
+	ConsumeNone = 0;
+	ConsumeURL = 1;
+	ConsumeSPA = 2;
+}
 message PotentialResource {
 	enum ResourceType {
 		ResourceUnknown = 0;
@@ -76,6 +93,7 @@ message PotentialResource {
 	}
 	string Name = 1;
 	ResourceType Type = 2;
+	Consume Consume = 3;
 }
 
 message ConfiguredResource {

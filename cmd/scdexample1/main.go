@@ -7,6 +7,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/solidcoredata/scd/api"
 	"github.com/solidcoredata/scd/service"
@@ -38,11 +39,22 @@ type ServiceConfig struct {
 func (s *ServiceConfig) ServiceBundle() chan *api.ServiceBundle {
 	return s.bundle
 }
-func (s *ServiceConfig) RequestHanderServer() (api.RequestHanderServer, bool) {
+func (s *ServiceConfig) HTTPServer() (api.HTTPServer, bool) {
 	return nil, false
 }
 func (s *ServiceConfig) AuthServer() (api.AuthServer, bool) {
 	return nil, false
+}
+func (s *ServiceConfig) SPAServer() (api.SPAServer, bool) {
+	return s, true
+}
+
+func JSON(v interface{}) string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
 }
 
 func (s *ServiceConfig) createConfig() *api.ServiceBundle {
@@ -54,10 +66,20 @@ func (s *ServiceConfig) createConfig() *api.ServiceBundle {
 			{Name: "auth/endpoint", PotentialResourceName: "solidcoredata.org/auth/endpoint", Configuration: &api.ConfiguredResource_Auth{Auth: &api.ConfigureAuth{Area: api.ConfigureAuth_System, Environment: "DEV"}}},
 
 			{Name: "ui/login", PotentialResourceName: "solidcoredata.org/base/login", Configuration: &api.ConfiguredResource_URL{URL: &api.ConfigureURL{MapTo: "/"}}},
-			{Name: "ui/loader", PotentialResourceName: "solidcoredata.org/base/loader", Configuration: &api.ConfiguredResource_URL{URL: &api.ConfigureURL{MapTo: "/"}}},
-			{Name: "ui/init.js", PotentialResourceName: "solidcoredata.org/base/init.js", Configuration: &api.ConfiguredResource_URL{URL: &api.ConfigureURL{MapTo: "/api/init.js"}}},
 			{Name: "ui/fetch-ui", PotentialResourceName: "solidcoredata.org/base/fetch-ui", Configuration: &api.ConfiguredResource_URL{URL: &api.ConfigureURL{MapTo: "/api/fetch-ui"}}},
 			{Name: "ui/favicon", PotentialResourceName: "solidcoredata.org/base/favicon", Configuration: &api.ConfiguredResource_URL{URL: &api.ConfigureURL{MapTo: "/ui/favicon"}}},
+
+			// TODO(kardianos): Combine these two calls (inline the init.js into the loader).
+			// TODO(kardianos): Add a configuration to the loader that directs to
+			// the first loaded component.
+			{Name: "ui/loader", PotentialResourceName: "solidcoredata.org/base/loader", Configuration: &api.ConfiguredResource_URL{URL: &api.ConfigureURL{MapTo: "/", Config: `{"Next": "solidcoredata.org/base/app/system-menu"}`}}},
+			// {Name: "ui/init.js", PotentialResourceName: "solidcoredata.org/base/init.js", Configuration: &api.ConfiguredResource_URL{URL: &api.ConfigureURL{MapTo: "/api/init.js"}}},
+
+			{Name: "spa/system-menu", PotentialResourceName: "solidcoredata.org/base/spa/system-menu", Configuration: &api.ConfiguredResource_SPACode{SPACode: &api.ConfigureSPACode{
+				Configuration: JSON(struct {
+					Menu []struct{ Name, Location string }
+				}{Menu: []struct{ Name, Location string }{{"File", "file"}, {"Edit", "edit"}}}),
+			}}},
 		},
 		Bundle: []*api.Bundle{
 			{
@@ -76,6 +98,7 @@ func (s *ServiceConfig) createConfig() *api.ServiceBundle {
 					"example-1.solidcoredata.org/app/ui/init.js",
 					"example-1.solidcoredata.org/app/ui/fetch-ui",
 					"example-1.solidcoredata.org/app/ui/favicon",
+					"solidcoredata.org/base/app/system-menu",
 				},
 			},
 		},
@@ -102,4 +125,8 @@ func (s *ServiceConfig) createConfig() *api.ServiceBundle {
 		},
 	}
 	return c
+}
+
+func (s *ServiceConfig) FetchUI(ctx context.Context, req *api.FetchUIRequest) (*api.FetchUIResponse, error) {
+	return &api.FetchUIResponse{}, nil
 }

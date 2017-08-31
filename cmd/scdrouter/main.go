@@ -8,6 +8,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"flag"
 	"fmt"
 	"io"
@@ -20,6 +22,7 @@ import (
 	"path"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/solidcoredata/scd/api"
 
@@ -86,9 +89,9 @@ func (s *RouterServer) startHTTP(ctx context.Context, bindHTTP string) {
 
 func (s *RouterServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	const redirectQueryKey = "redirect-to"
-	s.lk.RLock()
+	s.rlk.RLock()
 	appToken, found := s.router.App[r.Host]
-	s.lk.RUnlock()
+	s.rlk.RUnlock()
 
 	if !found {
 		http.Error(w, "host record not found", http.StatusNotFound)
@@ -186,7 +189,7 @@ func (s *RouterServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	appReq := &api.RequestReq{
+	appReq := &api.HTTPRequest{
 		Method: r.Method,
 		URL: &api.URL{
 			Host:  r.URL.Host,
@@ -202,9 +205,10 @@ func (s *RouterServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		RemoteAddr:  r.RemoteAddr,
 		TLS:         tls,
 		Auth:        authResp,
+		Config:      cr.CURL,
 	}
 
-	appResp, err := cr.PR.Handler.Request(ctx, appReq)
+	appResp, err := cr.PR.Handler.ServeHTTP(ctx, appReq)
 	if err != nil {
 		/*if status, ok := err.(HTTPError); ok {
 			msg := status.Msg
@@ -226,7 +230,7 @@ func (s *RouterServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		appReq.ContentType = "error"
 		appReq.Body = []byte(err.Error())
-		appResp, err = cr.PR.Handler.Request(ctx, appReq)
+		appResp, err = cr.PR.Handler.ServeHTTP(ctx, appReq)
 		if err != nil {
 			http.Error(w, "unable to render error page: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -262,18 +266,64 @@ type serviceDef struct {
 type RouterServer struct {
 	ctx context.Context
 
-	lk       sync.RWMutex
+	slk      sync.Mutex
 	services map[string]serviceDef
-	router   *RouterRun
-	// complete setup
+
+	rlk    sync.RWMutex
+	router *RouterRun
+
+	updateRouter chan *RouterRun
 }
 
 func NewRouterServer(ctx context.Context) *RouterServer {
 	s := &RouterServer{
-		ctx:      ctx,
-		services: make(map[string]serviceDef, 30),
+		ctx:          ctx,
+		services:     make(map[string]serviceDef, 30),
+		updateRouter: make(chan *RouterRun, 6),
 	}
+	go s.runUpdateRouter(ctx)
+
 	return s
+}
+func (s *RouterServer) runUpdateRouter(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case rr := <-s.updateRouter:
+			rr.resolveNames()
+			if len(rr.Errors) > 0 {
+				log.Printf("router: configuration errors:\n\t%s\n", strings.Join(rr.Errors, "\n\t"))
+				continue
+			}
+			// Version routes. Assign each new RouterRun a UUID.
+			// attach version to all requests.
+			// Updating version has the following steps:
+			//  * Add new version to remotes.
+			//  * Update local router around exclusive lock.
+			//  * Remove old version from remotes.
+			// If there is an issue adding version to the remotes, the preivous
+			// version will still work.
+			err := rr.updateServices(api.ServiceConfigAction_Add)
+			if err != nil {
+				log.Printf("router: failed to add new router %v", err)
+				continue
+			}
+
+			s.rlk.Lock()
+			old := s.router
+			s.router = rr
+			s.rlk.Unlock()
+
+			if old != nil {
+				err = old.updateServices(api.ServiceConfigAction_Remove)
+				if err != nil {
+					log.Printf("router: failed to remove prior router %v", err)
+				}
+			}
+			log.Println("router: configuration Updated")
+		}
+	}
 }
 
 func (s *RouterServer) updateServiceAddress(serviceAddress string) {
@@ -310,26 +360,32 @@ func (s *RouterServer) updateServiceAddress(serviceAddress string) {
 
 func (s *RouterServer) removeService(serviceName string) {
 	fmt.Printf("remove %q\n", serviceName)
-	s.lk.Lock()
-	defer s.lk.Unlock()
+	s.slk.Lock()
+	defer s.slk.Unlock()
 
 	delete(s.services, serviceName)
-
-	s.updateCompleteLocked()
+	s.updateCompleteSLocked()
 }
 
 func (s *RouterServer) updateService(serviceAddress string, conn *grpc.ClientConn, sb *api.ServiceBundle) {
 	fmt.Printf("update %q\n", sb.Name)
-	s.lk.Lock()
-	defer s.lk.Unlock()
+	s.slk.Lock()
+	defer s.slk.Unlock()
 
 	s.services[sb.Name] = serviceDef{
 		serviceAddress: serviceAddress,
 		conn:           conn,
 		sb:             sb,
 	}
+	s.updateCompleteSLocked()
+}
 
-	s.updateCompleteLocked()
+var versionPrefix = ""
+
+func init() {
+	b := make([]byte, 6)
+	rand.Read(b)
+	versionPrefix = base64.RawURLEncoding.EncodeToString(b)
 }
 
 func NewRouterRun() *RouterRun {
@@ -339,7 +395,18 @@ func NewRouterRun() *RouterRun {
 		Bundle:     make(map[string]*Bundle),
 		App:        make(map[string]AppToken),
 	}
+
+	// Create a unique version of this router run.
+	b := make([]byte, 6)
+	rand.Read(b)
+	suffix := base64.RawURLEncoding.EncodeToString(b)
+	rr.Version = fmt.Sprintf("%s%d%s", versionPrefix, time.Now().Unix(), suffix)
+
 	return rr
+}
+
+func (rr *RouterRun) updateServices(action api.ServiceConfigAction) error {
+	return nil
 }
 
 type AppToken struct {
@@ -348,6 +415,7 @@ type AppToken struct {
 }
 
 type RouterRun struct {
+	Version    string
 	Potential  map[string]*PR
 	Configured map[string]*CR
 	Bundle     map[string]*Bundle
@@ -361,7 +429,7 @@ type PR struct {
 	ServiceBundle *api.ServiceBundle
 	Service       *serviceDef
 
-	Handler api.RequestHanderClient
+	Handler api.HTTPClient
 }
 type CR struct {
 	Name          string
@@ -403,6 +471,8 @@ func (rr *RouterRun) AddError(f string, v ...interface{}) {
 }
 
 func (rr *RouterRun) resolveNames() {
+	rr.Errors = rr.Errors[:0] // Clear errors first.
+
 	for _, c := range rr.Configured {
 		pr, found := rr.Potential[c.PRName]
 		if !found {
@@ -431,7 +501,7 @@ func (rr *RouterRun) resolveNames() {
 				a.AuthConfig = cr.CAuth
 				fmt.Printf("send traffic from %q to %q\n", a.Host, cr.PR.Service.sb.Name)
 			} else {
-				rr.AddError("app on %q unable to resolve authenticator %q", a.AuthName)
+				rr.AddError("app on %q unable to resolve authenticator %q", a.Host, a.AuthName)
 			}
 		}
 		for _, lb := range a.LoginBundle {
@@ -454,14 +524,14 @@ func (rr *RouterRun) resolveNames() {
 	}
 }
 
-func (s *RouterServer) updateCompleteLocked() {
+func (s *RouterServer) updateCompleteSLocked() {
 	// TODO(kardianos): A better implementation should check for conflicts and
 	// deny both. It may also check for permissions or some other allowed
 	// resource verification.
 	rr := NewRouterRun()
 	for _, s := range s.services {
 		locals := s
-		handler := api.NewRequestHanderClient(s.conn)
+		handler := api.NewHTTPClient(s.conn)
 		for _, p := range s.sb.Potential {
 			name := path.Join(s.sb.Name, p.Name)
 			rr.Potential[name] = &PR{
@@ -520,8 +590,7 @@ func (s *RouterServer) updateCompleteLocked() {
 		}
 	}
 
-	rr.resolveNames()
-	s.router = rr
+	s.updateRouter <- rr
 }
 
 func (s *RouterServer) Notify(ctx context.Context, n *api.NotifyReq) (*google_protobuf1.Empty, error) {

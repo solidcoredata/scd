@@ -4,6 +4,10 @@
 
 package main
 
+import (
+	"html/template"
+)
+
 var loginNoneHTML = []byte(`<!DOCTYPE html>
 <meta charset="UTF-8">
 <link rel="icon" href="ui/favicon">
@@ -82,7 +86,7 @@ function login() {
 </script>
 `)
 
-var loginGrantedHTML = []byte(`<!DOCTYPE html>
+var loginGrantedHTML = template.Must(template.New("").Parse(`<!DOCTYPE html>
 <meta charset="UTF-8">
 <link rel="icon" href="ui/favicon">
 
@@ -122,8 +126,185 @@ function logout() {
 	req.send();
 }
 </script>
-<script src="api/init.js"></script>
-`)
+<script>
+"use strict";
+window.system = (function() {
+	"use strict";
+	var init = {};
+	var sys = {init: init};
+	
+	init.errors = [];
+	init.onError = function() {
+		if(!console || !console.error) {
+			return;
+		}
+		for(let i = 0; i < system.init.errors.length; i++) {
+			let e = system.init.errors[i];
+			console.error(e.Category, e.Name, e.On, e.Error, e.Input);
+		}
+	};
+	
+	function pushHTTPError(cnList, msg, done) {
+		for(let i = 0; i < cnList.length; i++) {
+			let cn = cnList[i];
+			init.errors.push({
+				Category: cn.Category,
+				Name: cn.Name,
+				On: "http",
+				Error: msg,
+				Input: "api/fetch-ui",
+			});
+		}
+		if(typeof init.onError === "function") {
+			init.onError();
+		}
+		if(typeof done === "function") {
+			done(msg);
+		}
+	}
+	function pushItemError(item, ex) {
+		init.errors.push({
+			Category: item.Category,
+			Name: item.Name,
+			On: item.Action,
+			Error: ex,
+			Input: item.Body,
+		});
+	}
+	function processItem(item) /* ok boolean */ {
+		switch(item.Action) {
+		case "store":
+			let o = null;
+			try {
+				o = JSON.parse(item.Body);
+			} catch (ex) {
+				pushItemError(item, ex);
+				return false;
+			}
+			init.set(item.Category, item.Name, o);
+			break;
+		case "execute":
+			let f = new Function(item.Body + "\n//# sourceURL=/system/" + item.Category + "/" + item.Name + ".js");
+			try {
+				f();
+			} catch(ex) {
+				pushItemError(item, ex);
+				return false;
+			}
+			break;
+		default:
+			pushItemError(item, "unknown action: " + item.Action);
+			return false;
+		}
+		return true;
+	}
+	function finishItem(err, resp, done) {
+		let hasError = false;
+		if(err != null) {
+			hasError = true;
+		}
+		if(err == null && resp) {
+			for(let i = 0; i < resp.length; i++) {
+				let item = resp[i];
+				if(processItem(item) === false) {
+					hasError = true;
+				}
+			}
+		} 
+		
+		if(hasError && typeof init.onError === "function") {
+			init.onError();
+		}
+		
+		if(typeof done === "function") {
+			done(err);
+		}
+	};
+	init.fetch = function(cnList, done) {
+		let request = new XMLHttpRequest();
+		request.responseType = "json";
+		request.onerror = function(ev) {
+			pushHTTPError(cnList, "unknown error, application may be down", done);
+		}
+		request.onload = function(ev) {
+			let ok = (ev.target.status === 200);
+			let resp = ev.target.response;
+			if(!ok) {
+				pushHTTPError(cnList, resp, done);
+				return;
+			}
+			
+			let need = [];
+			for(let i = 0; i < resp.length; i++) {
+				let item = resp[i];
+				if(item.Require) {
+					for(let ri = 0; ri < item.Require.length; ri++) {
+						let r = item.Require[ri];
+						if(!system.init.has(r.Category, r.Name)) {
+							need.push(r);
+						}
+					}
+				}
+			}
+			// TODO: de-duplicate needed items.
+			if(need.length === 0) {
+				finishItem(null, resp, done);
+				return;
+			}
+			init.fetch(need, function(err) {
+				finishItem(err, resp, done);
+			});
+		}
+		
+		let query = "";
+		for(let i = 0; i < cnList.length; i++) {
+			let cn = cnList[i];
+			if(i != 0) {
+				query += "&"
+			}
+			query += "category=" + encodeURIComponent(cn.Category) + "&name=" + encodeURIComponent(cn.Name)
+		}
+		
+		request.open("POST", "api/fetch-ui?" + query, true);
+		request.send();
+	};
+
+	init.set = function(categoryName, name, value) {
+		if(!sys[categoryName]) {
+			sys[categoryName] = {};
+		}
+		let category = sys[categoryName];
+		category[name] = value;
+	};
+	init.has = function(categoryName, name) {
+		if(!sys[categoryName]) {
+			return false;
+		}
+		return !!sys[categoryName][name];
+	};
+	init.get = function(categoryName, name) {
+		if(!sys[categoryName]) {
+			return null;
+		}
+		var o = sys[categoryName][name];
+		if(!o) {
+			return null
+		}
+		return o;
+	};
+	return sys;
+})();
+
+window.Next = {{$.Next}};
+
+system.init.fetch([{Category:"base", Name: window.Next}], function(err) {
+	if(err != null) {
+		console.error("failed to load application", err);
+		return;
+	}
+});
+</script>
+`))
 
 // Method of navigation:
 //

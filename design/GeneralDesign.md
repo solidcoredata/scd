@@ -327,4 +327,12 @@ All items are given unique names. A Potential resource "search-list-detail" widg
 and a specific configuration is used to create the new configured resource
 "user-list". The "user-list" can now be referenced directly.
 
+---
 
+TODO
+
+ * Add Version to all calls.
+ * Distill and send correct information to services from router.
+ * Add multi-version registry to services that can be queried by by version.
+ * Remove extra fields in Auth. Add an extra call to get any extra information.
+ * Serve SPA from distributed configuration.

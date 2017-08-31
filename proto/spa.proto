@@ -1,0 +1,41 @@
+// Copyright 2017 The Solid Core Data Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto3";
+
+package api;
+
+service SPA {
+	// TODO: RequestAuth and Login should both take some additional features
+	// about where the request is coming from (HTTPS info, remote address).
+    rpc FetchUI(FetchUIRequest) returns (FetchUIResponse);
+}
+
+message FetchUIRequest {
+	repeated FetchUICN List = 1;
+}
+
+message FetchUICN {
+	string Category = 1;
+	string Name = 2;
+}
+
+enum FetchUIAction {
+	ActionMissing = 0;
+	ActionStore = 1;
+	ActionExecute = 2;
+}
+
+message FetchUIResponse {
+	repeated FetchUIItem List = 1;
+	
+}
+
+message FetchUIItem {
+	FetchUIAction Action = 1;
+	string Category = 2;
+	string Name = 3;
+	repeated FetchUICN Require = 4;
+	string Body = 5; // JSON, Javascript
+}

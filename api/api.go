@@ -7,9 +7,12 @@ package api
 
 import (
 	"context"
+	"errors"
 )
 
-//go:generate protoc --go_out=plugins=grpc:../api -I ../proto/ ../proto/auth.proto ../proto/request.proto ../proto/router.proto
+//go:generate protoc --go_out=plugins=grpc:../api -I ../proto/ ../proto/auth.proto ../proto/request.proto ../proto/router.proto ../proto/spa.proto
+//go:generate go build -i github.com/solidcoredata/scd/api
+//go:generate go build github.com/solidcoredata/scd/cmd/...
 
 type requestAuthKey struct{}
 
@@ -22,4 +25,23 @@ func AuthNewContext(ctx context.Context, rs *RequestAuthResp) context.Context {
 func AuthFromContext(ctx context.Context) (rs *RequestAuthResp, found bool) {
 	rs, found = ctx.Value(requestAuthKey{}).(*RequestAuthResp)
 	return rs, found
+}
+
+var (
+	fetchUIActionMissingBytes = []byte("missing")
+	fetchUIActionExecuteBytes = []byte("execute")
+	fetchUIActionStoreBytes   = []byte("store")
+)
+
+func (a FetchUIAction) MarshalJSON() ([]byte, error) {
+	switch a {
+	default:
+		return nil, errors.New("unknown action type")
+	case FetchUIAction_ActionExecute:
+		return fetchUIActionExecuteBytes, nil
+	case FetchUIAction_ActionStore:
+		return fetchUIActionStoreBytes, nil
+	case FetchUIAction_ActionMissing:
+		return fetchUIActionMissingBytes, nil
+	}
 }

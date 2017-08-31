@@ -8,6 +8,7 @@ It is generated from these files:
 	auth.proto
 	request.proto
 	router.proto
+	spa.proto
 
 It has these top-level messages:
 	ConfigureAuth
@@ -21,15 +22,16 @@ It has these top-level messages:
 	NewPasswordResp
 	ChangePasswordReq
 	ChangePasswordResp
-	RequestReq
-	RequestResp
-	RepeatedString
+	HTTPRequest
+	HTTPResponse
 	URL
+	StringList
 	KeyValueList
 	TLSState
 	NotifyReq
 	UpdateReq
 	UpdateResp
+	ServiceConfigEndpoint
 	ServiceConfig
 	ConfigureURL
 	ConfigureSPACode
@@ -40,6 +42,10 @@ It has these top-level messages:
 	LoginBundle
 	ApplicationBundle
 	ServiceBundle
+	FetchUIRequest
+	FetchUICN
+	FetchUIResponse
+	FetchUIItem
 */
 package api
 

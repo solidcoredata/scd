@@ -7,12 +7,13 @@ syntax = "proto3";
 package api;
 
 import "auth.proto";
+import "router.proto";
 
-service RequestHander {
-	rpc Request(RequestReq) returns (RequestResp);
+service HTTP {
+	rpc ServeHTTP(HTTPRequest) returns (HTTPResponse);
 }
 
-message RequestReq {
+message HTTPRequest {
 	string Host = 1;
 	// Method specifies the HTTP method (GET, POST, PUT, etc.).
 	string Method = 2;
@@ -41,9 +42,9 @@ message RequestReq {
 	TLSState TLS = 10;
 	
 	RequestAuthResp Auth = 11;
-	
+	ConfigureURL Config = 12;
 }
-message RequestResp {
+message HTTPResponse {
 	KeyValueList Header = 1;
 	
 	// Content type of the body.
@@ -55,18 +56,18 @@ message RequestResp {
 	bytes Body = 4;
 }
 
-message RepeatedString {
-	repeated string Value = 1;
-}
-
 message URL {
 	string Host = 1;
 	string Path = 2;
 	KeyValueList Query = 3;
 }
 
+message StringList {
+	repeated string Value = 1;
+}
+
 message KeyValueList {
-	map<string, RepeatedString> Values = 1;
+	map<string, StringList> Values = 1;
 }
 
 message TLSState {

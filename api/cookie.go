@@ -17,13 +17,13 @@ import (
 // ErrNoCookie if not found.
 // If multiple cookies match the given name, only one cookie will
 // be returned.
-func (r *RequestReq) Cookie(name string) (*http.Cookie, error) {
+func (r *HTTPRequest) Cookie(name string) (*http.Cookie, error) {
 	for _, c := range readCookies(r.Header, name) {
 		return c, nil
 	}
 	return nil, http.ErrNoCookie
 }
-func (r *RequestReq) Cookies() []*http.Cookie {
+func (r *HTTPRequest) Cookies() []*http.Cookie {
 	return readCookies(r.Header, "")
 }
 

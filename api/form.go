@@ -20,7 +20,7 @@ type Form struct {
 	File  map[string][]*multipart.FileHeader
 }
 
-func (r *RequestReq) FormValues() (*Form, error) {
+func (r *HTTPRequest) FormValues() (*Form, error) {
 	ct, params, err := mime.ParseMediaType(r.ContentType)
 	if err != nil {
 		return nil, fmt.Errorf("scdhandler: unable to parse Content-Type: %v", err)
