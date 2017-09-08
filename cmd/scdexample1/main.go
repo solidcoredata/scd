@@ -95,7 +95,7 @@ func (s *ServiceConfig) createConfig() *api.ServiceBundle {
 				Include: []string{
 					"example-1.solidcoredata.org/app/auth/logout",
 					"example-1.solidcoredata.org/app/ui/loader",
-					"example-1.solidcoredata.org/app/ui/init.js",
+					// "example-1.solidcoredata.org/app/ui/init.js",
 					"example-1.solidcoredata.org/app/ui/fetch-ui",
 					"example-1.solidcoredata.org/app/ui/favicon",
 					"solidcoredata.org/base/app/system-menu",

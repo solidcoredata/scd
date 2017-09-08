@@ -43,6 +43,7 @@ message HTTPRequest {
 	
 	RequestAuthResp Auth = 11;
 	ConfigureURL Config = 12;
+	string Version = 13;
 }
 message HTTPResponse {
 	KeyValueList Header = 1;

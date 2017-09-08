@@ -304,7 +304,7 @@ func (s *RouterServer) runUpdateRouter(ctx context.Context) {
 			//  * Remove old version from remotes.
 			// If there is an issue adding version to the remotes, the preivous
 			// version will still work.
-			err := rr.updateServices(api.ServiceConfigAction_Add)
+			err := rr.updateServices(ctx, api.ServiceConfigAction_Add)
 			if err != nil {
 				log.Printf("router: failed to add new router %v", err)
 				continue
@@ -316,7 +316,7 @@ func (s *RouterServer) runUpdateRouter(ctx context.Context) {
 			s.rlk.Unlock()
 
 			if old != nil {
-				err = old.updateServices(api.ServiceConfigAction_Remove)
+				err = old.updateServices(ctx, api.ServiceConfigAction_Remove)
 				if err != nil {
 					log.Printf("router: failed to remove prior router %v", err)
 				}
@@ -405,7 +405,159 @@ func NewRouterRun() *RouterRun {
 	return rr
 }
 
-func (rr *RouterRun) updateServices(action api.ServiceConfigAction) error {
+func (rr *RouterRun) updateServices(ctx context.Context, action api.ServiceConfigAction) error {
+	if action == api.ServiceConfigAction_Remove {
+		fmt.Printf("REMOVE %s\n", rr.Version)
+
+		svcs := map[string]*serviceDef{}
+
+		for _, appToken := range rr.App {
+			app := appToken.App
+			for _, lbundle := range app.LoginBundle {
+				for _, include := range lbundle.Bundle.Include {
+					switch include.PR.Consume {
+					case api.Consume_ConsumeNone:
+					default:
+						svcs[include.Service.serviceAddress] = include.Service
+					}
+				}
+			}
+		}
+		for _, s := range svcs {
+			client := api.NewRoutesClient(s.conn)
+			_, err := client.UpdateServiceConfig(ctx, &api.ServiceConfig{
+				Action:  action,
+				Version: rr.Version,
+			})
+			if err != nil {
+				// Don't error out, we want to try to remove from each service,
+				// even if one fails.
+				log.Println("router: failed to remove service config %v", err)
+			}
+		}
+		return nil
+	}
+	fmt.Printf("ADD %s\n", rr.Version)
+
+	type ServiceConsumer struct {
+		Consumer *serviceDef
+
+		// map[serviceAddress]map[endpoint]bool
+		Endpoint map[string]map[string]bool
+	}
+
+	/*
+		Consume <- "service address"
+		Produce <- "service address"
+
+
+		Consume :: []{endpointName, serviceAddress}
+
+		map[type]{ConsumerService, []{serviceAddress, []endpointName}}
+	*/
+	svcs := map[*serviceDef][]api.PotentialResource_ResourceType{}
+	consume := map[api.PotentialResource_ResourceType]*serviceDef{}
+
+	type UniqueResource struct {
+		P map[string]*PR
+		R map[string]*CR
+	}
+	servicePerConsumer := map[*serviceDef]map[*serviceDef]*UniqueResource{}
+
+	// 1. Lookup where to send service from resource type.
+	// 2. Add CR/PR to destination bucket.
+
+	for _, appToken := range rr.App {
+		app := appToken.App
+
+		for _, lbundle := range app.LoginBundle {
+			for _, include := range lbundle.Bundle.Include {
+				switch include.PR.Consume {
+				case api.Consume_ConsumeNone:
+				default:
+					consume[include.PR.Type] = include.Service
+					svcs[include.Service] = append(svcs[include.Service], include.PR.Type)
+				}
+				fmt.Printf("\t%s <- %s\n", include.Name, include.PRName)
+			}
+		}
+	}
+	for _, appToken := range rr.App {
+		app := appToken.App
+
+		for _, lbundle := range app.LoginBundle {
+			for _, include := range lbundle.Bundle.Include {
+				sendTo, ok := consume[include.PR.Type]
+				if !ok {
+					continue
+				}
+
+				assocService, ok := servicePerConsumer[sendTo]
+				if !ok {
+					assocService = map[*serviceDef]*UniqueResource{}
+					servicePerConsumer[sendTo] = assocService
+				}
+				ur, ok := assocService[include.Service]
+				if !ok {
+					ur = &UniqueResource{
+						P: map[string]*PR{},
+						R: map[string]*CR{},
+					}
+					assocService[include.Service] = ur
+				}
+
+				ur.P[include.PR.Name] = include.PR
+				ur.R[include.Name] = include
+			}
+		}
+	}
+
+	for c, _ := range svcs {
+		sc := &api.ServiceConfig{
+			Version: rr.Version,
+			Action:  action,
+		}
+
+		for epService, ur := range servicePerConsumer[c] {
+			ep := &api.ServiceConfigEndpoint{
+				Endpoint: epService.serviceAddress,
+			}
+			sc.List = append(sc.List, ep)
+
+			for _, pr := range ur.P {
+				ep.Potential = append(ep.Potential, &api.PotentialResource{
+					Name:    pr.Name,
+					Type:    pr.Type,
+					Consume: pr.Consume,
+				})
+			}
+			for _, cr := range ur.R {
+				acr := &api.ConfiguredResource{
+					Name: cr.Name,
+					PotentialResourceName: cr.PRName,
+				}
+				switch {
+				default:
+					return fmt.Errorf("unknown configuration type")
+				case cr.CAuth != nil:
+					acr.Configuration = &api.ConfiguredResource_Auth{cr.CAuth}
+				case cr.CQuery != nil:
+					acr.Configuration = &api.ConfiguredResource_Query{cr.CQuery}
+				case cr.CSPA != nil:
+					acr.Configuration = &api.ConfiguredResource_SPACode{cr.CSPA}
+				case cr.CURL != nil:
+					acr.Configuration = &api.ConfiguredResource_URL{cr.CURL}
+				}
+				ep.Configured = append(ep.Configured, acr)
+			}
+		}
+
+		client := api.NewRoutesClient(c.conn)
+		_, err := client.UpdateServiceConfig(ctx, sc)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -428,6 +580,7 @@ type PR struct {
 	Type          api.PotentialResource_ResourceType
 	ServiceBundle *api.ServiceBundle
 	Service       *serviceDef
+	Consume       api.Consume
 
 	Handler api.HTTPClient
 }
@@ -540,6 +693,7 @@ func (s *RouterServer) updateCompleteSLocked() {
 				ServiceBundle: s.sb,
 				Service:       &locals,
 				Handler:       handler,
+				Consume:       p.Consume,
 			}
 		}
 		for _, cr := range s.sb.Configured {

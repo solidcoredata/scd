@@ -48,6 +48,7 @@ message ServiceConfigEndpoint {
 	string Name = 1;
 	string Endpoint = 2;
 	repeated ConfiguredResource Configured = 3;
+	repeated PotentialResource Potential = 4;
 }
 
 enum ServiceConfigAction {

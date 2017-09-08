@@ -144,7 +144,7 @@ func (s *ServiceConfig) createConfig() *api.ServiceBundle {
 			{Name: "loader", Type: api.PotentialResource_ResourceURL},
 			{Name: "login", Type: api.PotentialResource_ResourceURL},
 			{Name: "init.js", Type: api.PotentialResource_ResourceURL},
-			{Name: "fetch-ui", Type: api.PotentialResource_ResourceURL},
+			{Name: "fetch-ui", Type: api.PotentialResource_ResourceURL, Consume: api.Consume_ConsumeSPA},
 			{Name: "favicon", Type: api.PotentialResource_ResourceURL},
 
 			{Name: "spa/setup", Type: api.PotentialResource_ResourceSPACode}, // Remove?
