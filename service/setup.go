@@ -263,5 +263,6 @@ func (r *routesService) UpdateServiceBundle(arg0 *google_protobuf1.Empty, server
 }
 
 func (r *routesService) UpdateServiceConfig(ctx context.Context, config *api.ServiceConfig) (*google_protobuf1.Empty, error) {
+	fmt.Printf("%v Service Config: version=%s\n", config.Action, config.Version)
 	return &google_protobuf1.Empty{}, nil
 }

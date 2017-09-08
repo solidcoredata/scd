@@ -409,7 +409,7 @@ func (rr *RouterRun) updateServices(ctx context.Context, action api.ServiceConfi
 	if action == api.ServiceConfigAction_Remove {
 		fmt.Printf("REMOVE %s\n", rr.Version)
 
-		svcs := map[string]*serviceDef{}
+		svcs := map[*serviceDef]bool{}
 
 		for _, appToken := range rr.App {
 			app := appToken.App
@@ -418,12 +418,12 @@ func (rr *RouterRun) updateServices(ctx context.Context, action api.ServiceConfi
 					switch include.PR.Consume {
 					case api.Consume_ConsumeNone:
 					default:
-						svcs[include.Service.serviceAddress] = include.Service
+						svcs[include.PR.Service] = true
 					}
 				}
 			}
 		}
-		for _, s := range svcs {
+		for s := range svcs {
 			client := api.NewRoutesClient(s.conn)
 			_, err := client.UpdateServiceConfig(ctx, &api.ServiceConfig{
 				Action:  action,
@@ -439,22 +439,6 @@ func (rr *RouterRun) updateServices(ctx context.Context, action api.ServiceConfi
 	}
 	fmt.Printf("ADD %s\n", rr.Version)
 
-	type ServiceConsumer struct {
-		Consumer *serviceDef
-
-		// map[serviceAddress]map[endpoint]bool
-		Endpoint map[string]map[string]bool
-	}
-
-	/*
-		Consume <- "service address"
-		Produce <- "service address"
-
-
-		Consume :: []{endpointName, serviceAddress}
-
-		map[type]{ConsumerService, []{serviceAddress, []endpointName}}
-	*/
 	svcs := map[*serviceDef][]api.PotentialResource_ResourceType{}
 	consume := map[api.PotentialResource_ResourceType]*serviceDef{}
 
@@ -476,7 +460,7 @@ func (rr *RouterRun) updateServices(ctx context.Context, action api.ServiceConfi
 				case api.Consume_ConsumeNone:
 				default:
 					consume[include.PR.Type] = include.Service
-					svcs[include.Service] = append(svcs[include.Service], include.PR.Type)
+					svcs[include.PR.Service] = append(svcs[include.PR.Service], include.PR.Type)
 				}
 				fmt.Printf("\t%s <- %s\n", include.Name, include.PRName)
 			}
