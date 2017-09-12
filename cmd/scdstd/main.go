@@ -141,14 +141,14 @@ func (s *ServiceConfig) createConfig() *api.ServiceBundle {
 	c := &api.ServiceBundle{
 		Name: "solidcoredata.org/base",
 		Resource: []*api.Resource{
-			{Name: "loader", Type: api.ResourceType_ResourceURL},
-			{Name: "login", Type: api.ResourceType_ResourceURL},
-			{Name: "init.js", Type: api.ResourceType_ResourceURL},
-			{Name: "fetch-ui", Type: api.ResourceType_ResourceURL, Consume: api.ResourceType_ResourceSPACode},
-			{Name: "favicon", Type: api.ResourceType_ResourceURL},
+			{Name: "loader", Type: api.ResourceURL},
+			{Name: "login", Type: api.ResourceURL},
+			{Name: "init.js", Type: api.ResourceURL},
+			{Name: "fetch-ui", Type: api.ResourceURL, Consume: api.ResourceSPACode},
+			{Name: "favicon", Type: api.ResourceURL},
 
-			{Name: "spa/setup", Type: api.ResourceType_ResourceSPACode}, // Remove?
-			{Name: "spa/system-menu", Type: api.ResourceType_ResourceSPACode},
+			{Name: "spa/setup", Type: api.ResourceSPACode}, // Remove?
+			{Name: "spa/system-menu", Type: api.ResourceSPACode},
 			{Name: "app/system-menu", Parent: "solidcoredata.org/base/spa/system-menu", Configuration: []byte(`{"File":"Quit"}`)},
 		},
 	}

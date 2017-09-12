@@ -61,19 +61,11 @@ message ServiceConfig {
 	repeated ServiceConfigEndpoint List = 3;
 }
 
-enum ResourceType {
-	ResourceNone = 0;
-	ResourceURL = 1;
-	ResourceSPACode = 2;
-	ResourceAuth = 4;
-	ResourceQuery = 5;
-}
-
 message Resource {
 	string Name = 1;
 	string Parent = 2;
-	ResourceType Type = 3;
-	ResourceType Consume = 4;
+	string Type = 3;
+	string Consume = 4;
 	bytes Configuration = 5;
 	
 	// Include list of other resources this bundle should include.

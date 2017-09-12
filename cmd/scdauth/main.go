@@ -58,9 +58,9 @@ func (s *ServiceConfig) createConfig() *api.ServiceBundle {
 	c := &api.ServiceBundle{
 		Name: "solidcoredata.org/auth",
 		Resource: []*api.Resource{
-			{Name: "login", Type: api.ResourceType_ResourceURL},
-			{Name: "logout", Type: api.ResourceType_ResourceURL},
-			{Name: "endpoint", Type: api.ResourceType_ResourceAuth},
+			{Name: "login", Type: api.ResourceURL},
+			{Name: "logout", Type: api.ResourceURL},
+			{Name: "endpoint", Type: api.ResourceAuth},
 		},
 	}
 	return c

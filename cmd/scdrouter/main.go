@@ -422,7 +422,7 @@ func (rr *RouterRun) updateServices(ctx context.Context, action api.ServiceConfi
 			for _, lbundle := range app.LoginBundle {
 				for _, include := range lbundle.Bundle.IncludeRes {
 					switch include.ParentRes.Consume {
-					case api.ResourceType_ResourceNone:
+					case api.ResourceNone:
 					default:
 						svcs[include.ParentRes.Service] = true
 					}
@@ -459,7 +459,7 @@ func (rr *RouterRun) updateServices(ctx context.Context, action api.ServiceConfi
 		for _, lbundle := range app.LoginBundle {
 			for _, include := range lbundle.Bundle.IncludeRes {
 				switch include.ParentRes.Consume {
-				case api.ResourceType_ResourceNone:
+				case api.ResourceNone:
 				default:
 					consume[include.ParentRes.Type] = include.Service
 					svcs[include.ParentRes.Service] = append(svcs[include.ParentRes.Service], include.ParentRes.Type)
@@ -590,7 +590,7 @@ func (rr *RouterRun) resolveNames() {
 				continue
 			}
 			r.ParentRes = fr
-			if r.Type == api.ResourceType_ResourceNone {
+			if r.Type == api.ResourceNone {
 				r.Type = fr.Type
 			}
 		}
@@ -608,7 +608,7 @@ func (rr *RouterRun) resolveNames() {
 		if len(a.AuthName) == 0 {
 			rr.AddError("app on %q missing authentication", a.Host)
 		} else {
-			if fr, found := rr.Resource[a.AuthName]; found && fr.ParentRes != nil && fr.ParentRes.Service != nil && fr.Type == api.ResourceType_ResourceAuth {
+			if fr, found := rr.Resource[a.AuthName]; found && fr.ParentRes != nil && fr.ParentRes.Service != nil && fr.Type == api.ResourceAuth {
 				a.Auth = api.NewAuthClient(fr.ParentRes.Service.conn)
 				ac := &api.ConfigureAuth{}
 				err := ac.Decode(fr.Configuration)
@@ -633,7 +633,7 @@ func (rr *RouterRun) resolveNames() {
 			// TODO(kardianos): process SPA resources and create a per LoginBundle SPA lookup.
 			for _, ir := range r.IncludeRes {
 				switch ir.Type {
-				case api.ResourceType_ResourceURL:
+				case api.ResourceURL:
 					rc := &api.ConfigureURL{}
 					err := rc.Decode(ir.Configuration)
 					if err != nil {
@@ -659,11 +659,11 @@ func (s *RouterServer) updateCompleteSLocked() {
 			name := path.Join(s.sb.Name, r.Name)
 			rr.Resource[name] = &Res{
 				Name:          r.Name,
-				Type:          r.Type,
+				Type:          api.ResourceType(r.Type),
+				Consume:       api.ResourceType(r.Consume),
 				ServiceBundle: s.sb,
 				Service:       &locals,
 				Handler:       handler,
-				Consume:       r.Consume,
 				Parent:        r.Parent,
 				Configuration: r.Configuration,
 				Include:       r.Include,

@@ -48,6 +48,16 @@ func (a FetchUIAction) MarshalJSON() ([]byte, error) {
 	}
 }
 
+type ResourceType = string
+
+const (
+	ResourceNone    ResourceType = ""
+	ResourceAuth    ResourceType = "solidcoredata.org/resource/auth"
+	ResourceURL     ResourceType = "solidcoredata.org/resource/url"
+	ResourceSPACode ResourceType = "solidcoredata.org/resource/spa-code"
+	ResourceQuery   ResourceType = "solidcoredata.org/resource/query"
+)
+
 func (c *ConfigureURL) Encode() ([]byte, error) {
 	return proto.Marshal(c)
 }
