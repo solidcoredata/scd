@@ -47,8 +47,7 @@ message UpdateResp {}
 message ServiceConfigEndpoint {
 	string Name = 1;
 	string Endpoint = 2;
-	repeated ConfiguredResource Configured = 3;
-	repeated PotentialResource Potential = 4;
+	repeated Resource Resource = 3;
 }
 
 enum ServiceConfigAction {
@@ -62,66 +61,30 @@ message ServiceConfig {
 	repeated ServiceConfigEndpoint List = 3;
 }
 
-// Next draft.
-
-message ConfigureURL {
-	string MapTo = 1;
-	string Config = 2;
+enum ResourceType {
+	ResourceNone = 0;
+	ResourceURL = 1;
+	ResourceSPACode = 2;
+	ResourceAuth = 4;
+	ResourceQuery = 5;
 }
 
-message ConfigureSPACode {
-	// Configuration of the SPA component. Right now that would be a JSON string.
-	//
-	// In the future want to configure both client and server.
-	string Configuration = 1;
-}
-message ConfigureQuery {
-	string DSN = 1;
-}
-
-enum Consume {
-	ConsumeNone = 0;
-	ConsumeURL = 1;
-	ConsumeSPA = 2;
-}
-message PotentialResource {
-	enum ResourceType {
-		ResourceUnknown = 0;
-		ResourceURL = 1;
-		ResourceSPACode = 2;
-		ResourceAuth = 4;
-		ResourceQuery = 5;
-	}
+message Resource {
 	string Name = 1;
-	ResourceType Type = 2;
-	Consume Consume = 3;
-}
-
-message ConfiguredResource {
-	string Name = 1;
-	string PotentialResourceName = 2;
-	oneof Configuration {
-		ConfigureURL URL = 4;
-		ConfigureSPACode SPACode = 5;
-		ConfigureAuth Auth = 6;
-		ConfigureQuery Query = 7;
-	}
-}
-
-message Bundle {
-	// Name of the bundle, relative to the service name.
-	// May be "app" or "search-list-detail".
-	string Name = 1;
+	string Parent = 2;
+	ResourceType Type = 3;
+	ResourceType Consume = 4;
+	bytes Configuration = 5;
 	
 	// Include list of other resources this bundle should include.
-	repeated string Include = 3;
+	repeated string Include = 6;
 }
 
 message LoginBundle {
 	LoginState LoginState = 1;
 	string Prefix = 2;
 	bool ConsumeRedirect = 3;
-	string Bundle = 4;
+	string Resource = 4;
 }
 
 message ApplicationBundle {
@@ -142,17 +105,11 @@ message ServiceBundle {
 	// "solidcoredata.org/example-1" or "solidcoredata.org/library-1".
 	string Name = 1;
 	
-	// 1. Define the resource with PotentialResource.
-	repeated PotentialResource Potential = 2;
+	// Resources with potential and configured resources.
+	// Also define bundled resources together.
+	repeated Resource Resource = 2;
 	
-	// 2. Configure the resource with ConfiguredResource.
-	repeated ConfiguredResource Configured = 3;
-	
-	// 3. Bundle Configured Resources or other Bundles together
-	// with a Bundle.
-	repeated Bundle Bundle = 4;
-	
-	// 4. Bundle Login bundles together with an auth configured resource and
+	// Bundle Login bundles together with an auth configured resource and
 	// host name list to define an application that can be served.
 	repeated ApplicationBundle Application = 5;
 }

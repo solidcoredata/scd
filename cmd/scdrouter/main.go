@@ -189,11 +189,19 @@ func (s *RouterServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// TODO: cache the configuration somewhere, don't decode every time.
+	config := &api.ConfigureURL{}
+	err = config.Decode(cr.Configuration)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("unable to decode config %v", err), http.StatusInternalServerError)
+		return
+	}
+
 	appReq := &api.HTTPRequest{
 		Method: r.Method,
 		URL: &api.URL{
 			Host:  r.URL.Host,
-			Path:  cr.PR.Name, // r.URL.Path,
+			Path:  cr.ParentRes.Name, // r.URL.Path,
 			Query: api.NewKeyValueList(r.URL.Query()),
 		},
 		ProtoMajor:  int32(r.ProtoMajor),
@@ -205,10 +213,10 @@ func (s *RouterServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		RemoteAddr:  r.RemoteAddr,
 		TLS:         tls,
 		Auth:        authResp,
-		Config:      cr.CURL,
+		Config:      config,
 	}
 
-	appResp, err := cr.PR.Handler.ServeHTTP(ctx, appReq)
+	appResp, err := cr.ParentRes.Handler.ServeHTTP(ctx, appReq)
 	if err != nil {
 		/*if status, ok := err.(HTTPError); ok {
 			msg := status.Msg
@@ -230,7 +238,7 @@ func (s *RouterServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		appReq.ContentType = "error"
 		appReq.Body = []byte(err.Error())
-		appResp, err = cr.PR.Handler.ServeHTTP(ctx, appReq)
+		appResp, err = cr.ParentRes.Handler.ServeHTTP(ctx, appReq)
 		if err != nil {
 			http.Error(w, "unable to render error page: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -390,10 +398,8 @@ func init() {
 
 func NewRouterRun() *RouterRun {
 	rr := &RouterRun{
-		Potential:  make(map[string]*PR),
-		Configured: make(map[string]*CR),
-		Bundle:     make(map[string]*Bundle),
-		App:        make(map[string]AppToken),
+		Resource: make(map[string]*Res),
+		App:      make(map[string]AppToken),
 	}
 
 	// Create a unique version of this router run.
@@ -414,11 +420,11 @@ func (rr *RouterRun) updateServices(ctx context.Context, action api.ServiceConfi
 		for _, appToken := range rr.App {
 			app := appToken.App
 			for _, lbundle := range app.LoginBundle {
-				for _, include := range lbundle.Bundle.Include {
-					switch include.PR.Consume {
-					case api.Consume_ConsumeNone:
+				for _, include := range lbundle.Bundle.IncludeRes {
+					switch include.ParentRes.Consume {
+					case api.ResourceType_ResourceNone:
 					default:
-						svcs[include.PR.Service] = true
+						svcs[include.ParentRes.Service] = true
 					}
 				}
 			}
@@ -439,14 +445,10 @@ func (rr *RouterRun) updateServices(ctx context.Context, action api.ServiceConfi
 	}
 	fmt.Printf("ADD %s\n", rr.Version)
 
-	svcs := map[*serviceDef][]api.PotentialResource_ResourceType{}
-	consume := map[api.PotentialResource_ResourceType]*serviceDef{}
+	svcs := map[*serviceDef][]api.ResourceType{}
+	consume := map[api.ResourceType]*serviceDef{}
 
-	type UniqueResource struct {
-		P map[string]*PR
-		R map[string]*CR
-	}
-	servicePerConsumer := map[*serviceDef]map[*serviceDef]*UniqueResource{}
+	servicePerConsumer := map[*serviceDef]map[*serviceDef]map[string]*Res{}
 
 	// 1. Lookup where to send service from resource type.
 	// 2. Add CR/PR to destination bucket.
@@ -455,14 +457,14 @@ func (rr *RouterRun) updateServices(ctx context.Context, action api.ServiceConfi
 		app := appToken.App
 
 		for _, lbundle := range app.LoginBundle {
-			for _, include := range lbundle.Bundle.Include {
-				switch include.PR.Consume {
-				case api.Consume_ConsumeNone:
+			for _, include := range lbundle.Bundle.IncludeRes {
+				switch include.ParentRes.Consume {
+				case api.ResourceType_ResourceNone:
 				default:
-					consume[include.PR.Type] = include.Service
-					svcs[include.PR.Service] = append(svcs[include.PR.Service], include.PR.Type)
+					consume[include.ParentRes.Type] = include.Service
+					svcs[include.ParentRes.Service] = append(svcs[include.ParentRes.Service], include.ParentRes.Type)
 				}
-				fmt.Printf("\t%s <- %s\n", include.Name, include.PRName)
+				fmt.Printf("\t%s <- %s\n", include.Name, include.Parent)
 			}
 		}
 	}
@@ -470,28 +472,25 @@ func (rr *RouterRun) updateServices(ctx context.Context, action api.ServiceConfi
 		app := appToken.App
 
 		for _, lbundle := range app.LoginBundle {
-			for _, include := range lbundle.Bundle.Include {
-				sendTo, ok := consume[include.PR.Type]
+			for _, include := range lbundle.Bundle.IncludeRes {
+				sendTo, ok := consume[include.ParentRes.Type]
 				if !ok {
 					continue
 				}
 
 				assocService, ok := servicePerConsumer[sendTo]
 				if !ok {
-					assocService = map[*serviceDef]*UniqueResource{}
+					assocService = map[*serviceDef]map[string]*Res{}
 					servicePerConsumer[sendTo] = assocService
 				}
 				ur, ok := assocService[include.Service]
 				if !ok {
-					ur = &UniqueResource{
-						P: map[string]*PR{},
-						R: map[string]*CR{},
-					}
+					ur = map[string]*Res{}
 					assocService[include.Service] = ur
 				}
 
-				ur.P[include.PR.Name] = include.PR
-				ur.R[include.Name] = include
+				ur[include.ParentRes.Name] = include.ParentRes
+				ur[include.Name] = include
 			}
 		}
 	}
@@ -508,31 +507,14 @@ func (rr *RouterRun) updateServices(ctx context.Context, action api.ServiceConfi
 			}
 			sc.List = append(sc.List, ep)
 
-			for _, pr := range ur.P {
-				ep.Potential = append(ep.Potential, &api.PotentialResource{
-					Name:    pr.Name,
-					Type:    pr.Type,
-					Consume: pr.Consume,
+			for _, r := range ur {
+				ep.Resource = append(ep.Resource, &api.Resource{
+					Name:          r.Name,
+					Type:          r.Type,
+					Consume:       r.Consume,
+					Parent:        r.Parent,
+					Configuration: r.Configuration,
 				})
-			}
-			for _, cr := range ur.R {
-				acr := &api.ConfiguredResource{
-					Name: cr.Name,
-					PotentialResourceName: cr.PRName,
-				}
-				switch {
-				default:
-					return fmt.Errorf("unknown configuration type")
-				case cr.CAuth != nil:
-					acr.Configuration = &api.ConfiguredResource_Auth{cr.CAuth}
-				case cr.CQuery != nil:
-					acr.Configuration = &api.ConfiguredResource_Query{cr.CQuery}
-				case cr.CSPA != nil:
-					acr.Configuration = &api.ConfiguredResource_SPACode{cr.CSPA}
-				case cr.CURL != nil:
-					acr.Configuration = &api.ConfiguredResource_URL{cr.CURL}
-				}
-				ep.Configured = append(ep.Configured, acr)
 			}
 		}
 
@@ -551,49 +533,39 @@ type AppToken struct {
 }
 
 type RouterRun struct {
-	Version    string
-	Potential  map[string]*PR
-	Configured map[string]*CR
-	Bundle     map[string]*Bundle
-	App        map[string]AppToken
+	Version  string
+	Resource map[string]*Res
+	App      map[string]AppToken
 
 	Errors []string
 }
-type PR struct {
+
+type Res struct {
 	Name          string
-	Type          api.PotentialResource_ResourceType
+	Parent        string
+	Type          api.ResourceType
+	Consume       api.ResourceType
+	Configuration []byte
+	Include       []string
+
+	ParentRes     *Res
+	IncludeRes    []*Res
 	ServiceBundle *api.ServiceBundle
 	Service       *serviceDef
-	Consume       api.Consume
 
 	Handler api.HTTPClient
 }
-type CR struct {
-	Name          string
-	PRName        string
-	PR            *PR
-	CAuth         *api.ConfigureAuth
-	CSPA          *api.ConfigureSPACode
-	CURL          *api.ConfigureURL
-	CQuery        *api.ConfigureQuery
-	ServiceBundle *api.ServiceBundle
-	Service       *serviceDef
-}
-type Bundle struct {
-	Name        string
-	IncludeName []string
-	Include     []*CR
-}
+
 type LoginBundle struct {
 	LoginState      api.LoginState
 	Prefix          string
 	ConsumeRedirect bool
 	BundleName      string
-	Bundle          *Bundle
+	Bundle          *Res
 
 	// TODO(kardianos): this should use some type of prefix tree to handle
 	// folder paths.
-	URLRouter map[string]*CR
+	URLRouter map[string]*Res
 }
 type App struct {
 	Host        []string
@@ -610,22 +582,25 @@ func (rr *RouterRun) AddError(f string, v ...interface{}) {
 func (rr *RouterRun) resolveNames() {
 	rr.Errors = rr.Errors[:0] // Clear errors first.
 
-	for _, c := range rr.Configured {
-		pr, found := rr.Potential[c.PRName]
-		if !found {
-			rr.AddError("missing potential resource %q required by %q", c.PRName, c.Name)
-			continue
-		}
-		c.PR = pr
-	}
-	for _, b := range rr.Bundle {
-		for _, iname := range b.IncludeName {
-			cr, found := rr.Configured[iname]
+	for _, r := range rr.Resource {
+		if len(r.Parent) > 0 {
+			fr, found := rr.Resource[r.Parent]
 			if !found {
-				rr.AddError("missing configured resource %q required by %q", iname, b.Name)
+				rr.AddError("missing potential resource %q required by %q", r.Parent, r.Name)
 				continue
 			}
-			b.Include = append(b.Include, cr)
+			r.ParentRes = fr
+			if r.Type == api.ResourceType_ResourceNone {
+				r.Type = fr.Type
+			}
+		}
+		for _, iname := range r.Include {
+			fr, found := rr.Resource[iname]
+			if !found {
+				rr.AddError("missing configured resource %q required by %q", iname, r.Name)
+				continue
+			}
+			r.IncludeRes = append(r.IncludeRes, fr)
 		}
 	}
 	for _, at := range rr.App {
@@ -633,28 +608,39 @@ func (rr *RouterRun) resolveNames() {
 		if len(a.AuthName) == 0 {
 			rr.AddError("app on %q missing authentication", a.Host)
 		} else {
-			if cr, found := rr.Configured[a.AuthName]; found && cr.PR != nil && cr.PR.Service != nil {
-				a.Auth = api.NewAuthClient(cr.PR.Service.conn)
-				a.AuthConfig = cr.CAuth
-				fmt.Printf("send traffic from %q to %q\n", a.Host, cr.PR.Service.sb.Name)
+			if fr, found := rr.Resource[a.AuthName]; found && fr.ParentRes != nil && fr.ParentRes.Service != nil && fr.Type == api.ResourceType_ResourceAuth {
+				a.Auth = api.NewAuthClient(fr.ParentRes.Service.conn)
+				ac := &api.ConfigureAuth{}
+				err := ac.Decode(fr.Configuration)
+				if err != nil {
+					rr.AddError("invalid configuration for %q %v", fr.Name, err)
+				} else {
+					a.AuthConfig = ac
+					fmt.Printf("send traffic from %q to %q\n", a.Host, fr.ParentRes.Service.sb.Name)
+				}
 			} else {
 				rr.AddError("app on %q unable to resolve authenticator %q", a.Host, a.AuthName)
 			}
 		}
 		for _, lb := range a.LoginBundle {
-			b, found := rr.Bundle[lb.BundleName]
+			r, found := rr.Resource[lb.BundleName]
 			if !found {
 				rr.AddError("missing bundle %q for app on %q for state %v", lb.BundleName, a.Host, lb.LoginState)
 				continue
 			}
-			lb.Bundle = b
+			lb.Bundle = r
 			// TODO(kardianos): process URL resources and create a per LoginBundle URL tree.
 			// TODO(kardianos): process SPA resources and create a per LoginBundle SPA lookup.
-			for _, cr := range b.Include {
-				switch {
-				case cr.CURL != nil:
-					lb.URLRouter[cr.CURL.MapTo] = cr
-				case cr.CSPA != nil:
+			for _, ir := range r.IncludeRes {
+				switch ir.Type {
+				case api.ResourceType_ResourceURL:
+					rc := &api.ConfigureURL{}
+					err := rc.Decode(ir.Configuration)
+					if err != nil {
+						rr.AddError("invalid configuration for %q %v", ir.Name, err)
+						continue
+					}
+					lb.URLRouter[rc.MapTo] = ir
 				}
 			}
 		}
@@ -669,35 +655,18 @@ func (s *RouterServer) updateCompleteSLocked() {
 	for _, s := range s.services {
 		locals := s
 		handler := api.NewHTTPClient(s.conn)
-		for _, p := range s.sb.Potential {
-			name := path.Join(s.sb.Name, p.Name)
-			rr.Potential[name] = &PR{
-				Name:          p.Name,
-				Type:          p.Type,
+		for _, r := range s.sb.Resource {
+			name := path.Join(s.sb.Name, r.Name)
+			rr.Resource[name] = &Res{
+				Name:          r.Name,
+				Type:          r.Type,
 				ServiceBundle: s.sb,
 				Service:       &locals,
 				Handler:       handler,
-				Consume:       p.Consume,
-			}
-		}
-		for _, cr := range s.sb.Configured {
-			name := path.Join(s.sb.Name, cr.Name)
-			rr.Configured[name] = &CR{
-				Name:          name,
-				PRName:        cr.PotentialResourceName,
-				CAuth:         cr.GetAuth(),
-				CSPA:          cr.GetSPACode(),
-				CURL:          cr.GetURL(),
-				CQuery:        cr.GetQuery(),
-				ServiceBundle: s.sb,
-				Service:       &locals,
-			}
-		}
-		for _, b := range s.sb.Bundle {
-			name := path.Join(s.sb.Name, b.Name)
-			rr.Bundle[name] = &Bundle{
-				Name:        name,
-				IncludeName: b.Include,
+				Consume:       r.Consume,
+				Parent:        r.Parent,
+				Configuration: r.Configuration,
+				Include:       r.Include,
 			}
 		}
 		for _, a := range s.sb.Application {
@@ -720,9 +689,9 @@ func (s *RouterServer) updateCompleteSLocked() {
 					LoginState:      lb.LoginState,
 					Prefix:          lb.Prefix,
 					ConsumeRedirect: lb.ConsumeRedirect,
-					BundleName:      lb.Bundle,
+					BundleName:      lb.Resource,
 
-					URLRouter: make(map[string]*CR),
+					URLRouter: make(map[string]*Res),
 				}
 			}
 		}
@@ -734,17 +703,9 @@ func (s *RouterServer) updateCompleteSLocked() {
 func (s *RouterServer) Notify(ctx context.Context, n *api.NotifyReq) (*google_protobuf1.Empty, error) {
 	// For testing attempt to hit the service right back to ensure the service
 	// address is good.
-	ok := false
-	conn, err := grpc.DialContext(ctx, n.ServiceAddress, grpc.WithInsecure())
-	if err == nil {
-		defer conn.Close()
-
-		client := api.NewRoutesClient(conn)
-		_, err = client.UpdateServiceConfig(ctx, &api.ServiceConfig{})
-		if err == nil {
-			ok = true
-		}
-	}
+	//
+	// Removed for now.
+	ok := true
 	fmt.Printf("service=%q ok=%t\n", n.ServiceAddress, ok)
 	go s.updateServiceAddress(n.ServiceAddress)
 	return &google_protobuf1.Empty{}, nil

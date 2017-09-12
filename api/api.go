@@ -8,6 +8,8 @@ package api
 import (
 	"context"
 	"errors"
+
+	proto "github.com/golang/protobuf/proto"
 )
 
 //go:generate protoc --go_out=plugins=grpc:../api -I ../proto/ ../proto/auth.proto ../proto/request.proto ../proto/router.proto ../proto/spa.proto
@@ -44,4 +46,34 @@ func (a FetchUIAction) MarshalJSON() ([]byte, error) {
 	case FetchUIAction_ActionMissing:
 		return fetchUIActionMissingBytes, nil
 	}
+}
+
+func (c *ConfigureURL) Encode() ([]byte, error) {
+	return proto.Marshal(c)
+}
+func (c *ConfigureURL) EncodeMust() []byte {
+	b, err := proto.Marshal(c)
+	if err != nil {
+		panic(err)
+	}
+	return b
+}
+func (c *ConfigureURL) Decode(b []byte) error {
+	err := proto.Unmarshal(b, c)
+	return err
+}
+
+func (c *ConfigureAuth) Encode() ([]byte, error) {
+	return proto.Marshal(c)
+}
+func (c *ConfigureAuth) EncodeMust() []byte {
+	b, err := proto.Marshal(c)
+	if err != nil {
+		panic(err)
+	}
+	return b
+}
+func (c *ConfigureAuth) Decode(b []byte) error {
+	err := proto.Unmarshal(b, c)
+	return err
 }

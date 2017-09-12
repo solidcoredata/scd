@@ -7,10 +7,14 @@ syntax = "proto3";
 package api;
 
 import "auth.proto";
-import "router.proto";
 
 service HTTP {
 	rpc ServeHTTP(HTTPRequest) returns (HTTPResponse);
+}
+
+message ConfigureURL {
+	string MapTo = 1;
+	string Config = 2;
 }
 
 message HTTPRequest {

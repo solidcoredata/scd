@@ -57,16 +57,16 @@ type ServiceConfig struct {
 func (s *ServiceConfig) createConfig() *api.ServiceBundle {
 	c := &api.ServiceBundle{
 		Name: "solidcoredata.org/auth",
-		Potential: []*api.PotentialResource{
-			{Name: "login", Type: api.PotentialResource_ResourceURL},
-			{Name: "logout", Type: api.PotentialResource_ResourceURL},
-			{Name: "endpoint", Type: api.PotentialResource_ResourceAuth},
+		Resource: []*api.Resource{
+			{Name: "login", Type: api.ResourceType_ResourceURL},
+			{Name: "logout", Type: api.ResourceType_ResourceURL},
+			{Name: "endpoint", Type: api.ResourceType_ResourceAuth},
 		},
 	}
 	return c
 }
 
-func (s *ServiceConfig) ServiceBundle() chan *api.ServiceBundle {
+func (s *ServiceConfig) ServiceBundle() <-chan *api.ServiceBundle {
 	return s.bundle
 }
 func (s *ServiceConfig) HTTPServer() (api.HTTPServer, bool) {

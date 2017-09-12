@@ -46,7 +46,7 @@ type ServiceConfig struct {
 	staticConfig *api.ServiceBundle
 }
 
-func (s *ServiceConfig) ServiceBundle() chan *api.ServiceBundle {
+func (s *ServiceConfig) ServiceBundle() <-chan *api.ServiceBundle {
 	return s.bundle
 }
 func (s *ServiceConfig) HTTPServer() (api.HTTPServer, bool) {
@@ -140,18 +140,16 @@ var requestMap = map[CN][]*ReturnItem{
 func (s *ServiceConfig) createConfig() *api.ServiceBundle {
 	c := &api.ServiceBundle{
 		Name: "solidcoredata.org/base",
-		Potential: []*api.PotentialResource{
-			{Name: "loader", Type: api.PotentialResource_ResourceURL},
-			{Name: "login", Type: api.PotentialResource_ResourceURL},
-			{Name: "init.js", Type: api.PotentialResource_ResourceURL},
-			{Name: "fetch-ui", Type: api.PotentialResource_ResourceURL, Consume: api.Consume_ConsumeSPA},
-			{Name: "favicon", Type: api.PotentialResource_ResourceURL},
+		Resource: []*api.Resource{
+			{Name: "loader", Type: api.ResourceType_ResourceURL},
+			{Name: "login", Type: api.ResourceType_ResourceURL},
+			{Name: "init.js", Type: api.ResourceType_ResourceURL},
+			{Name: "fetch-ui", Type: api.ResourceType_ResourceURL, Consume: api.ResourceType_ResourceSPACode},
+			{Name: "favicon", Type: api.ResourceType_ResourceURL},
 
-			{Name: "spa/setup", Type: api.PotentialResource_ResourceSPACode}, // Remove?
-			{Name: "spa/system-menu", Type: api.PotentialResource_ResourceSPACode},
-		},
-		Configured: []*api.ConfiguredResource{
-			{Name: "app/system-menu", PotentialResourceName: "solidcoredata.org/base/spa/system-menu", Configuration: &api.ConfiguredResource_SPACode{&api.ConfigureSPACode{`{"File":"Quit"}`}}},
+			{Name: "spa/setup", Type: api.ResourceType_ResourceSPACode}, // Remove?
+			{Name: "spa/system-menu", Type: api.ResourceType_ResourceSPACode},
+			{Name: "app/system-menu", Parent: "solidcoredata.org/base/spa/system-menu", Configuration: []byte(`{"File":"Quit"}`)},
 		},
 	}
 	return c

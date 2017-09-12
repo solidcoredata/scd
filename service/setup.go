@@ -47,10 +47,15 @@ func onErrf(t byte, f string, v ...interface{}) {
 
 // ServiceConfiguration
 type ServiceConfigration interface {
-	ServiceBundle() chan *api.ServiceBundle
+	ServiceBundle() <-chan *api.ServiceBundle
 	HTTPServer() (api.HTTPServer, bool)
 	AuthServer() (api.AuthServer, bool)
 	SPAServer() (api.SPAServer, bool)
+}
+
+type RemoteService struct {
+	Conn    *grpc.ClientConn
+	Address string
 }
 
 func Setup(ctx context.Context, sc ServiceConfigration) {
@@ -63,7 +68,8 @@ func Setup(ctx context.Context, sc ServiceConfigration) {
 		onErr(printDefaults, `missing "bind" argument`)
 	}
 	server := grpc.NewServer()
-	api.RegisterRoutesServer(server, newRoutes(ctx, sc))
+	r := newRoutes(ctx, sc)
+	api.RegisterRoutesServer(server, r)
 
 	if handler, is := sc.HTTPServer(); is {
 		api.RegisterHTTPServer(server, handler)
@@ -181,7 +187,12 @@ type routesService struct {
 	doneLock sync.RWMutex
 	done     bool
 
+	// update is a set of "chan *api.ServiceBundle) where the value is a boolean
+	// set to true.
 	update *sync.Map
+
+	// latest is the internal channel that provides a thread safe request-response
+	// to receive the latest service bundle.
 	latest chan chan *api.ServiceBundle
 }
 
@@ -190,44 +201,49 @@ func newRoutes(ctx context.Context, sc ServiceConfigration) *routesService {
 		update: &sync.Map{},
 		latest: make(chan chan *api.ServiceBundle, 5),
 	}
-	go func() {
-		var latest *api.ServiceBundle
+	go r.run(ctx, sc)
+	return r
+}
 
-		for {
-			select {
-			case sb, ok := <-sc.ServiceBundle():
-				if !ok {
-					r.doneLock.Lock()
-					r.done = true
-					defer r.doneLock.Unlock()
+func (r *routesService) run(ctx context.Context, sc ServiceConfigration) {
+	var latest *api.ServiceBundle
 
-					del := make([]chan *api.ServiceBundle, 0, 5)
-					r.update.Range(func(key interface{}, value interface{}) bool {
-						u := key.(chan *api.ServiceBundle)
-						del = append(del, u)
-						return true
-					})
-					for _, key := range del {
-						r.update.Delete(key)
-					}
-					return
-				}
-				latest = sb
+	for {
+		select {
+		case sb, ok := <-sc.ServiceBundle():
+			if !ok {
+				r.doneLock.Lock()
+				r.done = true
+				defer r.doneLock.Unlock()
+
+				del := make([]chan *api.ServiceBundle, 0, 5)
 				r.update.Range(func(key interface{}, value interface{}) bool {
 					u := key.(chan *api.ServiceBundle)
-					u <- sb
+					del = append(del, u)
 					return true
 				})
-			case lchan := <-r.latest:
-				if latest != nil {
-					lchan <- latest
+				for _, key := range del {
+					r.update.Delete(key)
 				}
-			case <-ctx.Done():
 				return
 			}
+			latest = sb
+			r.update.Range(func(key interface{}, value interface{}) bool {
+				u := key.(chan *api.ServiceBundle)
+				u <- sb
+				return true
+			})
+		case lchan := <-r.latest:
+			if latest != nil {
+				lchan <- latest
+			}
+		case <-ctx.Done():
+			r.doneLock.Lock()
+			r.done = true
+			r.doneLock.Unlock()
+			return
 		}
-	}()
-	return r
+	}
 }
 
 // Update connected services information, such as other service locations and SPA code and configs.

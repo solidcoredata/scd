@@ -36,7 +36,7 @@ type ServiceConfig struct {
 	staticConfig *api.ServiceBundle
 }
 
-func (s *ServiceConfig) ServiceBundle() chan *api.ServiceBundle {
+func (s *ServiceConfig) ServiceBundle() <-chan *api.ServiceBundle {
 	return s.bundle
 }
 func (s *ServiceConfig) HTTPServer() (api.HTTPServer, bool) {
@@ -49,39 +49,37 @@ func (s *ServiceConfig) SPAServer() (api.SPAServer, bool) {
 	return s, true
 }
 
-func JSON(v interface{}) string {
+func JSON(v interface{}) []byte {
 	b, err := json.Marshal(v)
 	if err != nil {
 		panic(err)
 	}
-	return string(b)
+	return b
 }
 
 func (s *ServiceConfig) createConfig() *api.ServiceBundle {
 	c := &api.ServiceBundle{
 		Name: "example-1.solidcoredata.org/app",
-		Configured: []*api.ConfiguredResource{
-			{Name: "auth/login", PotentialResourceName: "solidcoredata.org/auth/login", Configuration: &api.ConfiguredResource_URL{URL: &api.ConfigureURL{MapTo: "/api/login"}}},
-			{Name: "auth/logout", PotentialResourceName: "solidcoredata.org/auth/logout", Configuration: &api.ConfiguredResource_URL{URL: &api.ConfigureURL{MapTo: "/api/logout"}}},
-			{Name: "auth/endpoint", PotentialResourceName: "solidcoredata.org/auth/endpoint", Configuration: &api.ConfiguredResource_Auth{Auth: &api.ConfigureAuth{Area: api.ConfigureAuth_System, Environment: "DEV"}}},
+		Resource: []*api.Resource{
+			{Name: "auth/login", Parent: "solidcoredata.org/auth/login", Configuration: (&api.ConfigureURL{MapTo: "/api/login"}).EncodeMust()},
+			{Name: "auth/logout", Parent: "solidcoredata.org/auth/logout", Configuration: (&api.ConfigureURL{MapTo: "/api/logout"}).EncodeMust()},
+			{Name: "auth/endpoint", Parent: "solidcoredata.org/auth/endpoint", Configuration: (&api.ConfigureAuth{Area: api.ConfigureAuth_System, Environment: "DEV"}).EncodeMust()},
 
-			{Name: "ui/login", PotentialResourceName: "solidcoredata.org/base/login", Configuration: &api.ConfiguredResource_URL{URL: &api.ConfigureURL{MapTo: "/"}}},
-			{Name: "ui/fetch-ui", PotentialResourceName: "solidcoredata.org/base/fetch-ui", Configuration: &api.ConfiguredResource_URL{URL: &api.ConfigureURL{MapTo: "/api/fetch-ui"}}},
-			{Name: "ui/favicon", PotentialResourceName: "solidcoredata.org/base/favicon", Configuration: &api.ConfiguredResource_URL{URL: &api.ConfigureURL{MapTo: "/ui/favicon"}}},
+			{Name: "ui/login", Parent: "solidcoredata.org/base/login", Configuration: (&api.ConfigureURL{MapTo: "/"}).EncodeMust()},
+			{Name: "ui/fetch-ui", Parent: "solidcoredata.org/base/fetch-ui", Configuration: (&api.ConfigureURL{MapTo: "/api/fetch-ui"}).EncodeMust()},
+			{Name: "ui/favicon", Parent: "solidcoredata.org/base/favicon", Configuration: (&api.ConfigureURL{MapTo: "/ui/favicon"}).EncodeMust()},
 
 			// TODO(kardianos): Combine these two calls (inline the init.js into the loader).
 			// TODO(kardianos): Add a configuration to the loader that directs to
 			// the first loaded component.
-			{Name: "ui/loader", PotentialResourceName: "solidcoredata.org/base/loader", Configuration: &api.ConfiguredResource_URL{URL: &api.ConfigureURL{MapTo: "/", Config: `{"Next": "solidcoredata.org/base/app/system-menu"}`}}},
-			// {Name: "ui/init.js", PotentialResourceName: "solidcoredata.org/base/init.js", Configuration: &api.ConfiguredResource_URL{URL: &api.ConfigureURL{MapTo: "/api/init.js"}}},
+			{Name: "ui/loader", Parent: "solidcoredata.org/base/loader", Configuration: (&api.ConfigureURL{MapTo: "/", Config: `{"Next": "solidcoredata.org/base/app/system-menu"}`}).EncodeMust()},
+			// {Name: "ui/init.js", Parent: "solidcoredata.org/base/init.js", Configuration: (&api.ConfigureURL{MapTo: "/api/init.js"}).EncodeMust()},
 
-			{Name: "spa/system-menu", PotentialResourceName: "solidcoredata.org/base/spa/system-menu", Configuration: &api.ConfiguredResource_SPACode{SPACode: &api.ConfigureSPACode{
-				Configuration: JSON(struct {
-					Menu []struct{ Name, Location string }
-				}{Menu: []struct{ Name, Location string }{{"File", "file"}, {"Edit", "edit"}}}),
-			}}},
-		},
-		Bundle: []*api.Bundle{
+			{Name: "spa/system-menu", Parent: "solidcoredata.org/base/spa/system-menu", Configuration: JSON(struct {
+				Menu []struct{ Name, Location string }
+			}{Menu: []struct{ Name, Location string }{{"File", "file"}, {"Edit", "edit"}}}),
+			},
+
 			{
 				Name: "none",
 				Include: []string{
@@ -109,13 +107,13 @@ func (s *ServiceConfig) createConfig() *api.ServiceBundle {
 						LoginState:      api.LoginState_None,
 						Prefix:          "/login/",
 						ConsumeRedirect: false,
-						Bundle:          "example-1.solidcoredata.org/app/none",
+						Resource:        "example-1.solidcoredata.org/app/none",
 					},
 					{
 						LoginState:      api.LoginState_Granted,
 						Prefix:          "/app/",
 						ConsumeRedirect: true,
-						Bundle:          "example-1.solidcoredata.org/app/granted",
+						Resource:        "example-1.solidcoredata.org/app/granted",
 					},
 				},
 

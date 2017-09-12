@@ -22,6 +22,7 @@ It has these top-level messages:
 	NewPasswordResp
 	ChangePasswordReq
 	ChangePasswordResp
+	ConfigureURL
 	HTTPRequest
 	HTTPResponse
 	URL
@@ -33,12 +34,7 @@ It has these top-level messages:
 	UpdateResp
 	ServiceConfigEndpoint
 	ServiceConfig
-	ConfigureURL
-	ConfigureSPACode
-	ConfigureQuery
-	PotentialResource
-	ConfiguredResource
-	Bundle
+	Resource
 	LoginBundle
 	ApplicationBundle
 	ServiceBundle
