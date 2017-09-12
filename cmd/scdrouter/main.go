@@ -165,11 +165,12 @@ func (s *RouterServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	r.URL.Path = strings.TrimPrefix(r.URL.Path, lb.Prefix[:len(lb.Prefix)-1])
 
-	cr, found := lb.URLRouter[r.URL.Path]
+	ResURL, found := lb.URLRouter[r.URL.Path]
 	if !found {
 		http.Error(w, fmt.Sprintf("path not found %q", r.URL.Path), http.StatusNotFound)
 		return
 	}
+	cr := ResURL.Resource
 
 	const readLimit = 1024 * 1024 * 100 // 100 MB. In the future make this property part of the AppHandler interface or RouteHandler.
 	body, err := ioutil.ReadAll(io.LimitReader(r.Body, readLimit))
@@ -189,14 +190,6 @@ func (s *RouterServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// TODO: cache the configuration somewhere, don't decode every time.
-	config := &api.ConfigureURL{}
-	err = config.Decode(cr.Configuration)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("unable to decode config %v", err), http.StatusInternalServerError)
-		return
-	}
-
 	appReq := &api.HTTPRequest{
 		Method: r.Method,
 		URL: &api.URL{
@@ -213,7 +206,7 @@ func (s *RouterServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		RemoteAddr:  r.RemoteAddr,
 		TLS:         tls,
 		Auth:        authResp,
-		Config:      config,
+		Config:      ResURL.Configuration,
 	}
 
 	appResp, err := cr.ParentRes.Handler.ServeHTTP(ctx, appReq)
@@ -238,7 +231,7 @@ func (s *RouterServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		appReq.ContentType = "error"
 		appReq.Body = []byte(err.Error())
-		appResp, err = cr.ParentRes.Handler.ServeHTTP(ctx, appReq)
+		appResp, err = cr.Resource.ParentRes.Handler.ServeHTTP(ctx, appReq)
 		if err != nil {
 			http.Error(w, "unable to render error page: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -565,8 +558,14 @@ type LoginBundle struct {
 
 	// TODO(kardianos): this should use some type of prefix tree to handle
 	// folder paths.
-	URLRouter map[string]*Res
+	URLRouter map[string]URL
 }
+
+type URL struct {
+	Configuration *api.ConfigureURL
+	Resource      *Res
+}
+
 type App struct {
 	Host        []string
 	AuthName    string
@@ -640,7 +639,10 @@ func (rr *RouterRun) resolveNames() {
 						rr.AddError("invalid configuration for %q %v", ir.Name, err)
 						continue
 					}
-					lb.URLRouter[rc.MapTo] = ir
+					lb.URLRouter[rc.MapTo] = URL{
+						Resource:      ir,
+						Configuration: rc,
+					}
 				}
 			}
 		}
@@ -691,7 +693,7 @@ func (s *RouterServer) updateCompleteSLocked() {
 					ConsumeRedirect: lb.ConsumeRedirect,
 					BundleName:      lb.Resource,
 
-					URLRouter: make(map[string]*Res),
+					URLRouter: make(map[string]URL),
 				}
 			}
 		}
