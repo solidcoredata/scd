@@ -137,9 +137,11 @@ var requestMap = map[CN][]*ReturnItem{
 // How do I know if the required resource is a code or configuration? Probably
 // have two different Required field, one for config, one for code.
 
+const serviceName = "solidcoredata.org/base"
+
 func (s *ServiceConfig) createConfig() *api.ServiceBundle {
 	c := &api.ServiceBundle{
-		Name: "solidcoredata.org/base",
+		Name: serviceName,
 		Resource: []*api.Resource{
 			{Name: "loader", Type: api.ResourceURL},
 			{Name: "login", Type: api.ResourceURL},
@@ -160,7 +162,7 @@ func (s *ServiceConfig) ServeHTTP(ctx context.Context, r *api.HTTPRequest) (*api
 	switch r.URL.Path {
 	default:
 		return nil, grpc.Errorf(codes.NotFound, "path %q not found", r.URL.Path)
-	case "loader":
+	case serviceName + "/loader":
 		resp.ContentType = "text/html"
 		buf := &bytes.Buffer{}
 		c := struct {
@@ -176,13 +178,13 @@ func (s *ServiceConfig) ServeHTTP(ctx context.Context, r *api.HTTPRequest) (*api
 			return nil, err
 		}
 		resp.Body = buf.Bytes()
-	case "login":
+	case serviceName + "/login":
 		resp.ContentType = "text/html"
 		resp.Body = loginNoneHTML
-	case "init.js":
+	case serviceName + "/init.js":
 		resp.ContentType = "	application/javascript"
 		resp.Body = spaInitJS
-	case "fetch-ui":
+	case serviceName + "/fetch-ui":
 		cats := r.URL.Query.Values["category"].Value
 		names := r.URL.Query.Values["name"].Value
 		if len(cats) != len(names) {
@@ -203,7 +205,7 @@ func (s *ServiceConfig) ServeHTTP(ctx context.Context, r *api.HTTPRequest) (*api
 		resp.ContentType = "application/json"
 		resp.Body, err = json.Marshal(ret)
 		return resp, err
-	case "favicon":
+	case serviceName + "/favicon":
 		var c color.Color
 		switch r.Auth.LoginState {
 		default:

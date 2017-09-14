@@ -54,9 +54,11 @@ type ServiceConfig struct {
 	am           *AuthenticateMemory
 }
 
+const serviceName = "solidcoredata.org/auth"
+
 func (s *ServiceConfig) createConfig() *api.ServiceBundle {
 	c := &api.ServiceBundle{
-		Name: "solidcoredata.org/auth",
+		Name: serviceName,
 		Resource: []*api.Resource{
 			{Name: "login", Type: api.ResourceURL},
 			{Name: "logout", Type: api.ResourceURL},
@@ -85,7 +87,7 @@ func (s *ServiceConfig) ServeHTTP(ctx context.Context, r *api.HTTPRequest) (*api
 	switch r.URL.Path {
 	default:
 		return nil, grpc.Errorf(codes.NotFound, "path %q not found", r.URL.Path)
-	case "login":
+	case serviceName + "/login":
 		f, err := r.FormValues()
 		if err != nil {
 			return nil, grpc.Errorf(codes.Internal, "unable to parse form values %v", err)
@@ -108,7 +110,7 @@ func (s *ServiceConfig) ServeHTTP(ctx context.Context, r *api.HTTPRequest) (*api
 			HttpOnly: true,
 		}
 		resp.Header.Add("Set-Cookie", c.String())
-	case "logout":
+	case serviceName + "/logout":
 		rs := r.Auth
 		c, err := r.Cookie(rs.TokenKey)
 		if err != nil {

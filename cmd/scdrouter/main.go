@@ -454,8 +454,9 @@ func (rr *RouterRun) updateServices(ctx context.Context, action api.ServiceConfi
 				switch include.ParentRes.Consume {
 				case api.ResourceNone:
 				default:
-					consume[include.ParentRes.Type] = include.Service
-					svcs[include.ParentRes.Service] = append(svcs[include.ParentRes.Service], include.ParentRes.Type)
+					fmt.Printf("::\t%s -> %s\n", include.ParentRes.Consume, include.Name)
+					consume[include.ParentRes.Consume] = include.Service
+					svcs[include.ParentRes.Service] = append(svcs[include.ParentRes.Service], include.ParentRes.Consume)
 				}
 				fmt.Printf("\t%s <- %s\n", include.Name, include.Parent)
 			}
@@ -467,7 +468,9 @@ func (rr *RouterRun) updateServices(ctx context.Context, action api.ServiceConfi
 		for _, lbundle := range app.LoginBundle {
 			for _, include := range lbundle.Bundle.IncludeRes {
 				sendTo, ok := consume[include.ParentRes.Type]
+				fmt.Printf("look at %s as type %s\n", include.ParentRes.Name, include.ParentRes.Type)
 				if !ok {
+					fmt.Printf("\tNOT FOUND\n")
 					continue
 				}
 
@@ -660,7 +663,7 @@ func (s *RouterServer) updateCompleteSLocked() {
 		for _, r := range s.sb.Resource {
 			name := path.Join(s.sb.Name, r.Name)
 			rr.Resource[name] = &Res{
-				Name:          r.Name,
+				Name:          name,
 				Type:          api.ResourceType(r.Type),
 				Consume:       api.ResourceType(r.Consume),
 				ServiceBundle: s.sb,
