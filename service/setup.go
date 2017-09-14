@@ -280,5 +280,11 @@ func (r *routesService) UpdateServiceBundle(arg0 *google_protobuf1.Empty, server
 
 func (r *routesService) UpdateServiceConfig(ctx context.Context, config *api.ServiceConfig) (*google_protobuf1.Empty, error) {
 	fmt.Printf("%v Service Config: version=%s\n", config.Action, config.Version)
+	for _, ep := range config.List {
+		fmt.Printf("\tService %q at %q\n", ep.Name, ep.Endpoint)
+		for _, r := range ep.Resource {
+			fmt.Printf("\t\tResource %q, parent %q, type=%s\n", r.Name, r.Parent, r.Type)
+		}
+	}
 	return &google_protobuf1.Empty{}, nil
 }
