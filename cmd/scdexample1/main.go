@@ -96,7 +96,7 @@ func (s *ServiceConfig) createConfig() *api.ServiceBundle {
 					// "example-1.solidcoredata.org/app/ui/init.js",
 					"example-1.solidcoredata.org/app/ui/fetch-ui",
 					"example-1.solidcoredata.org/app/ui/favicon",
-					"solidcoredata.org/base/app/system-menu",
+					"example-1.solidcoredata.org/app/spa/system-menu",
 				},
 			},
 		},

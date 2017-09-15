@@ -454,11 +454,9 @@ func (rr *RouterRun) updateServices(ctx context.Context, action api.ServiceConfi
 				switch include.ParentRes.Consume {
 				case api.ResourceNone:
 				default:
-					fmt.Printf("::\t%s -> %s\n", include.ParentRes.Consume, include.Name)
-					consume[include.ParentRes.Consume] = include.Service
+					consume[include.ParentRes.Consume] = include.ParentRes.Service
 					svcs[include.ParentRes.Service] = append(svcs[include.ParentRes.Service], include.ParentRes.Consume)
 				}
-				fmt.Printf("\t%s <- %s\n", include.Name, include.Parent)
 			}
 		}
 	}
@@ -468,9 +466,7 @@ func (rr *RouterRun) updateServices(ctx context.Context, action api.ServiceConfi
 		for _, lbundle := range app.LoginBundle {
 			for _, include := range lbundle.Bundle.IncludeRes {
 				sendTo, ok := consume[include.ParentRes.Type]
-				fmt.Printf("look at %s as type %s\n", include.ParentRes.Name, include.ParentRes.Type)
 				if !ok {
-					fmt.Printf("\tNOT FOUND\n")
 					continue
 				}
 
@@ -484,9 +480,19 @@ func (rr *RouterRun) updateServices(ctx context.Context, action api.ServiceConfi
 					ur = map[string]*Res{}
 					assocService[include.Service] = ur
 				}
+				ur[include.Name] = include
+
+				if include.ParentRes == nil {
+					continue
+				}
+
+				ur, ok = assocService[include.ParentRes.Service]
+				if !ok {
+					ur = map[string]*Res{}
+					assocService[include.ParentRes.Service] = ur
+				}
 
 				ur[include.ParentRes.Name] = include.ParentRes
-				ur[include.Name] = include
 			}
 		}
 	}
@@ -618,7 +624,6 @@ func (rr *RouterRun) resolveNames() {
 					rr.AddError("invalid configuration for %q %v", fr.Name, err)
 				} else {
 					a.AuthConfig = ac
-					fmt.Printf("send traffic from %q to %q\n", a.Host, fr.ParentRes.Service.sb.Name)
 				}
 			} else {
 				rr.AddError("app on %q unable to resolve authenticator %q", a.Host, a.AuthName)

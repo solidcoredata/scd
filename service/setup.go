@@ -88,6 +88,7 @@ func Setup(ctx context.Context, sc ServiceConfigration) {
 	defer l.Close()
 	if len(routerAddress) > 0 {
 		serviceAddress, err := resolveServiceAddress(l.Addr(), routerAddress)
+		fmt.Printf("address=%s\n", serviceAddress)
 		if err != nil {
 			// Error with an exit because this service won't register
 			// to the router as expected. This is not expected to error
@@ -284,6 +285,9 @@ func (r *routesService) UpdateServiceConfig(ctx context.Context, config *api.Ser
 		fmt.Printf("\tService %q at %q\n", ep.Name, ep.Endpoint)
 		for _, r := range ep.Resource {
 			fmt.Printf("\t\tResource %q, parent %q, type=%s\n", r.Name, r.Parent, r.Type)
+			if r.Type == api.ResourceSPACode {
+				fmt.Printf("\t\t\tconfig=%s\n", string(r.Configuration))
+			}
 		}
 	}
 	return &google_protobuf1.Empty{}, nil
