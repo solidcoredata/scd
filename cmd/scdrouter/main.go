@@ -90,6 +90,7 @@ func (s *RouterServer) startHTTP(ctx context.Context, bindHTTP string) {
 func (s *RouterServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	const redirectQueryKey = "redirect-to"
 	s.rlk.RLock()
+	version := s.router.Version
 	appToken, found := s.router.App[r.Host]
 	s.rlk.RUnlock()
 
@@ -191,7 +192,8 @@ func (s *RouterServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	appReq := &api.HTTPRequest{
-		Method: r.Method,
+		Version: version,
+		Method:  r.Method,
 		URL: &api.URL{
 			Host:  r.URL.Host,
 			Path:  cr.ParentRes.Name, // r.URL.Path,

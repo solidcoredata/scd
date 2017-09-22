@@ -48,6 +48,7 @@ func onErrf(t byte, f string, v ...interface{}) {
 // ServiceConfiguration
 type ServiceConfigration interface {
 	ServiceBundle() <-chan *api.ServiceBundle
+	Config() chan<- *api.ServiceConfig
 	HTTPServer() (api.HTTPServer, bool)
 	AuthServer() (api.AuthServer, bool)
 	SPAServer() (api.SPAServer, bool)
@@ -185,6 +186,8 @@ func registerOnRouter(ctx context.Context, routerAddress, serviceAddress string)
 }
 
 type routesService struct {
+	sc ServiceConfigration
+
 	doneLock sync.RWMutex
 	done     bool
 
@@ -201,17 +204,18 @@ func newRoutes(ctx context.Context, sc ServiceConfigration) *routesService {
 	r := &routesService{
 		update: &sync.Map{},
 		latest: make(chan chan *api.ServiceBundle, 5),
+		sc:     sc,
 	}
-	go r.run(ctx, sc)
+	go r.run(ctx)
 	return r
 }
 
-func (r *routesService) run(ctx context.Context, sc ServiceConfigration) {
+func (r *routesService) run(ctx context.Context) {
 	var latest *api.ServiceBundle
 
 	for {
 		select {
-		case sb, ok := <-sc.ServiceBundle():
+		case sb, ok := <-r.sc.ServiceBundle():
 			if !ok {
 				r.doneLock.Lock()
 				r.done = true
@@ -279,6 +283,10 @@ func (r *routesService) UpdateServiceBundle(arg0 *google_protobuf1.Empty, server
 	return nil
 }
 
+// TODO(kardianos): include a version string in each resource so the client
+// can be updated in real time without reloading everything. This string
+// could be a content hash, file mod time, or a version number.
+
 func (r *routesService) UpdateServiceConfig(ctx context.Context, config *api.ServiceConfig) (*google_protobuf1.Empty, error) {
 	fmt.Printf("%v Service Config: version=%s\n", config.Action, config.Version)
 	for _, ep := range config.List {
@@ -289,6 +297,9 @@ func (r *routesService) UpdateServiceConfig(ctx context.Context, config *api.Ser
 				fmt.Printf("\t\t\tconfig=%s\n", string(r.Configuration))
 			}
 		}
+	}
+	if ch := r.sc.Config(); ch != nil {
+		ch <- config
 	}
 	return &google_protobuf1.Empty{}, nil
 }

@@ -15,6 +15,7 @@ import (
 	"image/color"
 	"image/draw"
 	"image/png"
+	"sync"
 
 	"github.com/solidcoredata/scd/api"
 	"github.com/solidcoredata/scd/service"
@@ -25,25 +26,54 @@ import (
 
 func main() {
 	ctx := context.TODO()
-	service.Setup(ctx, NewServiceConfig())
+	service.Setup(ctx, NewServiceConfig(ctx))
 }
 
 var _ service.ServiceConfigration = &ServiceConfig{}
 
-func NewServiceConfig() *ServiceConfig {
+func NewServiceConfig(ctx context.Context) *ServiceConfig {
 	s := &ServiceConfig{
 		bundle: make(chan *api.ServiceBundle, 5),
+		config: make(chan *api.ServiceConfig, 5),
+
+		setupVersion: make(map[string]*Setup, 5),
+		conns:        make(map[string]*Connection, 5),
 	}
+	go s.run(ctx)
 
 	s.staticConfig = s.createConfig()
 	s.bundle <- s.staticConfig
 	return s
 }
 
+type Connection struct {
+	Endpoint string
+	Conn     *grpc.ClientConn
+}
+
+type Resource struct {
+	Conn     *Connection
+	Resource *api.Resource
+}
+
+type Setup struct {
+	lookup map[string]Resource
+
+	// RPC connections speific to this version.
+	conns map[string]*Connection
+}
+
 type ServiceConfig struct {
 	bundle chan *api.ServiceBundle
+	config chan *api.ServiceConfig
 
 	staticConfig *api.ServiceBundle
+
+	mu           sync.RWMutex
+	setupVersion map[string]*Setup
+
+	// All rpc connections created the server.
+	conns map[string]*Connection
 }
 
 func (s *ServiceConfig) ServiceBundle() <-chan *api.ServiceBundle {
@@ -57,6 +87,76 @@ func (s *ServiceConfig) AuthServer() (api.AuthServer, bool) {
 }
 func (s *ServiceConfig) SPAServer() (api.SPAServer, bool) {
 	return s, true
+}
+
+func (s *ServiceConfig) run(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case sc := <-s.config:
+			switch sc.Action {
+			case api.ServiceConfigAction_Remove:
+				// Lookup all endpoint connections.
+				// If any are unused then close them.
+				s.mu.Lock()
+				delete(s.setupVersion, sc.Version)
+				closeConns := make([]string, 3)
+				for ep, conn := range s.conns {
+					found := false
+					for _, ver := range s.setupVersion {
+						if _, verFound := ver.conns[ep]; verFound {
+							found = true
+							break
+						}
+					}
+					if !found {
+						conn.Conn.Close()
+						closeConns = append(closeConns, ep)
+					}
+				}
+				for _, ep := range closeConns {
+					delete(s.conns, ep)
+				}
+				s.mu.Unlock()
+
+			case api.ServiceConfigAction_Add:
+				// Lookup all endpoint connections.
+				// If any are new then create them and add them.
+				setup := &Setup{
+					lookup: make(map[string]Resource, len(sc.List)*10),
+					conns:  make(map[string]*Connection, len(sc.List)),
+				}
+
+				s.mu.Lock()
+				for _, sce := range sc.List {
+					conn, found := s.conns[sce.Endpoint]
+					if !found {
+						cc, err := grpc.DialContext(ctx, sce.Endpoint, grpc.WithInsecure())
+						if err != nil {
+							fmt.Printf("Failed to dial rpc %q: %v\n", sce.Endpoint, err)
+							continue
+						}
+						conn = &Connection{
+							Endpoint: sce.Endpoint,
+							Conn:     cc,
+						}
+						s.conns[sce.Endpoint] = conn
+					}
+					setup.conns[sce.Endpoint] = conn
+					for _, res := range sce.Resource {
+						setup.lookup[res.Name] = Resource{
+							Conn:     conn,
+							Resource: res,
+						}
+					}
+				}
+				s.setupVersion[sc.Version] = setup
+				s.mu.Unlock()
+			}
+			fmt.Printf("got %v\n", sc.Version)
+		}
+	}
 }
 
 // Return an array of items:
@@ -185,6 +285,16 @@ func (s *ServiceConfig) ServeHTTP(ctx context.Context, r *api.HTTPRequest) (*api
 		resp.ContentType = "	application/javascript"
 		resp.Body = spaInitJS
 	case serviceName + "/fetch-ui":
+		fmt.Printf("fetch-ui: version=%q\n", r.Version)
+		s.mu.RLock()
+		setup, foundSetup := s.setupVersion[r.Version]
+		s.mu.RUnlock()
+		
+		if !foundSetup {
+			return nil, fmt.Errorf("unable to find version %s", r.Version)
+		}
+		
+		
 		cats := r.URL.Query.Values["category"].Value
 		names := r.URL.Query.Values["name"].Value
 		if len(cats) != len(names) {
@@ -195,6 +305,25 @@ func (s *ServiceConfig) ServeHTTP(ctx context.Context, r *api.HTTPRequest) (*api
 		ret := make([]*ReturnItem, 0, len(cats)+2)
 		for i := range cats {
 			c, n := cats[i], names[i]
+			
+			res, resFound := setup.lookup[n]
+			if resFound {
+				fmt.Printf("Resource found for %q with config %q\n", n, string(res.Resource.Configuration))
+			} else {
+				fmt.Printf("Resource not found %q\n", n)
+				for name := range setup.lookup {
+					fmt.Printf("\t%s\n", name)
+				}
+			}
+			// Send config to client.
+			// Client look for parent.
+			// If parent and include not found fetch.
+			// Check to ensure parent is found.
+			// Set config-name = new parent-name(config).
+			//
+			// Set category=ResourceType on client.
+			// This will partition off the namespace.
+			
 			riList, found := requestMap[CN{c, n}]
 			if !found {
 				return nil, fmt.Errorf("fetch-ui: category=%q name=%q not found", c, n)
@@ -257,4 +386,8 @@ func (s *ServiceConfig) FetchUI(ctx context.Context, req *api.FetchUIRequest) (*
 		}
 	}
 	return &api.FetchUIResponse{List: ret}, nil
+}
+
+func (s *ServiceConfig) Config() chan<- *api.ServiceConfig {
+	return s.config
 }

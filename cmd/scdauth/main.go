@@ -136,3 +136,7 @@ func (s *ServiceConfig) ServeHTTP(ctx context.Context, r *api.HTTPRequest) (*api
 func (s *ServiceConfig) RequestAuth(ctx context.Context, r *api.RequestAuthReq) (*api.RequestAuthResp, error) {
 	return s.am.RequestAuth(ctx, r.Token)
 }
+
+func (s *ServiceConfig) Config() chan<- *api.ServiceConfig {
+	return nil
+}

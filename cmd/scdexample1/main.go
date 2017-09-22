@@ -72,7 +72,7 @@ func (s *ServiceConfig) createConfig() *api.ServiceBundle {
 			// TODO(kardianos): Combine these two calls (inline the init.js into the loader).
 			// TODO(kardianos): Add a configuration to the loader that directs to
 			// the first loaded component.
-			{Name: "ui/loader", Parent: "solidcoredata.org/base/loader", Configuration: (&api.ConfigureURL{MapTo: "/", Config: `{"Next": "solidcoredata.org/base/app/system-menu"}`}).EncodeMust()},
+			{Name: "ui/loader", Parent: "solidcoredata.org/base/loader", Configuration: (&api.ConfigureURL{MapTo: "/", Config: `{"Next": "example-1.solidcoredata.org/app/spa/system-menu"}`}).EncodeMust()},
 			// {Name: "ui/init.js", Parent: "solidcoredata.org/base/init.js", Configuration: (&api.ConfigureURL{MapTo: "/api/init.js"}).EncodeMust()},
 
 			{Name: "spa/system-menu", Parent: "solidcoredata.org/base/spa/system-menu", Configuration: JSON(struct {
@@ -127,4 +127,8 @@ func (s *ServiceConfig) createConfig() *api.ServiceBundle {
 
 func (s *ServiceConfig) FetchUI(ctx context.Context, req *api.FetchUIRequest) (*api.FetchUIResponse, error) {
 	return &api.FetchUIResponse{}, nil
+}
+
+func (s *ServiceConfig) Config() chan<- *api.ServiceConfig {
+	return nil
 }
