@@ -57,9 +57,11 @@ func JSON(v interface{}) []byte {
 	return b
 }
 
+const serviceName = "example-1.solidcoredata.org/app"
+
 func (s *ServiceConfig) createConfig() *api.ServiceBundle {
 	c := &api.ServiceBundle{
-		Name: "example-1.solidcoredata.org/app",
+		Name: serviceName,
 		Resource: []*api.Resource{
 			{Name: "auth/login", Parent: "solidcoredata.org/auth/login", Configuration: (&api.ConfigureURL{MapTo: "/api/login"}).EncodeMust()},
 			{Name: "auth/logout", Parent: "solidcoredata.org/auth/logout", Configuration: (&api.ConfigureURL{MapTo: "/api/logout"}).EncodeMust()},
@@ -69,13 +71,11 @@ func (s *ServiceConfig) createConfig() *api.ServiceBundle {
 			{Name: "ui/fetch-ui", Parent: "solidcoredata.org/base/fetch-ui", Configuration: (&api.ConfigureURL{MapTo: "/api/fetch-ui"}).EncodeMust()},
 			{Name: "ui/favicon", Parent: "solidcoredata.org/base/favicon", Configuration: (&api.ConfigureURL{MapTo: "/ui/favicon"}).EncodeMust()},
 
-			// TODO(kardianos): Combine these two calls (inline the init.js into the loader).
-			// TODO(kardianos): Add a configuration to the loader that directs to
-			// the first loaded component.
 			{Name: "ui/loader", Parent: "solidcoredata.org/base/loader", Configuration: (&api.ConfigureURL{MapTo: "/", Config: `{"Next": "example-1.solidcoredata.org/app/spa/system-menu"}`}).EncodeMust()},
-			// {Name: "ui/init.js", Parent: "solidcoredata.org/base/init.js", Configuration: (&api.ConfigureURL{MapTo: "/api/init.js"}).EncodeMust()},
 
-			{Name: "spa/system-menu", Parent: "solidcoredata.org/base/spa/system-menu", Configuration: JSON(struct {
+			{Name: "spa/funny", Type: api.ResourceSPACode},
+
+			{Name: "spa/system-menu", Parent: "solidcoredata.org/base/spa/system-menu", Include: []string{serviceName + "/spa/funny"}, Configuration: JSON(struct {
 				Menu []struct{ Name, Location string }
 			}{Menu: []struct{ Name, Location string }{{"File", "file"}, {"Edit", "edit"}}}),
 			},
@@ -93,10 +93,10 @@ func (s *ServiceConfig) createConfig() *api.ServiceBundle {
 				Include: []string{
 					"example-1.solidcoredata.org/app/auth/logout",
 					"example-1.solidcoredata.org/app/ui/loader",
-					// "example-1.solidcoredata.org/app/ui/init.js",
 					"example-1.solidcoredata.org/app/ui/fetch-ui",
 					"example-1.solidcoredata.org/app/ui/favicon",
 					"example-1.solidcoredata.org/app/spa/system-menu",
+					"example-1.solidcoredata.org/app/spa/funny",
 				},
 			},
 		},
@@ -125,8 +125,20 @@ func (s *ServiceConfig) createConfig() *api.ServiceBundle {
 	return c
 }
 
+var spaBody = map[string]string{
+	serviceName + "/spa/funny": "console.log('dancing bears!');",
+}
+
 func (s *ServiceConfig) FetchUI(ctx context.Context, req *api.FetchUIRequest) (*api.FetchUIResponse, error) {
-	return &api.FetchUIResponse{}, nil
+	resp := &api.FetchUIResponse{}
+	for _, name := range req.List {
+		body, found := spaBody[name]
+		if !found {
+			continue
+		}
+		resp.List = append(resp.List, &api.FetchUIItem{Name: name, Body: body})
+	}
+	return resp, nil
 }
 
 func (s *ServiceConfig) Config() chan<- *api.ServiceConfig {

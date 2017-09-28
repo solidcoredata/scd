@@ -13,18 +13,7 @@ service SPA {
 }
 
 message FetchUIRequest {
-	repeated FetchUICN List = 1;
-}
-
-message FetchUICN {
-	string Category = 1;
-	string Name = 2;
-}
-
-enum FetchUIAction {
-	ActionMissing = 0;
-	ActionStore = 1;
-	ActionExecute = 2;
+	repeated string List = 1;
 }
 
 message FetchUIResponse {
@@ -33,9 +22,6 @@ message FetchUIResponse {
 }
 
 message FetchUIItem {
-	FetchUIAction Action = 1;
-	string Category = 2;
-	string Name = 3;
-	repeated FetchUICN Require = 4;
-	string Body = 5; // JSON, Javascript
+	string Name = 1;
+	string Body = 2; // JSON, Javascript
 }

@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"image"
 	"image/color"
@@ -20,6 +19,7 @@ import (
 	"github.com/solidcoredata/scd/api"
 	"github.com/solidcoredata/scd/service"
 
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 )
@@ -161,11 +161,10 @@ func (s *ServiceConfig) run(ctx context.Context) {
 
 // Return an array of items:
 type ReturnItem struct {
-	Action   string // store | execute
-	Category string // Widget, Field, code, ...
-	Name     string // Text, Numeric, SearchListDetail
-	Require  []CN
-	Body     string // JSON, Javascript
+	Name    string
+	Type    string // Empty for Javascript, present for configs. Name of the type to use it in.
+	Require []string
+	Body    string // JSON, Javascript
 }
 
 func JSON(v interface{}) string {
@@ -174,37 +173,6 @@ func JSON(v interface{}) string {
 		panic(err)
 	}
 	return string(b)
-}
-
-type CN struct{ Category, Name string }
-
-func init() {
-	for key, value := range requestMap {
-		for _, item := range value {
-			if len(item.Category) == 0 {
-				item.Category = key.Category
-			}
-			if len(item.Name) == 0 {
-				item.Name = key.Name
-			}
-		}
-	}
-}
-
-var requestMap = map[CN][]*ReturnItem{
-	CN{"base", "setup"}: []*ReturnItem{
-		{Action: "store", Category: "base", Name: "config", Body: JSON(struct{ Next CN }{CN{Category: "config", Name: "example1.solidcoredata.org/system-menu"}})},
-		{Action: "execute", Category: "base", Name: "loader", Body: baseLoader},
-	},
-	CN{"config", "example1.solidcoredata.org/system-menu"}: []*ReturnItem{
-		{Action: "store", Require: []CN{{"code", "solidcoredata.org/system-menu"}}, Body: JSON(struct {
-			Type string
-			Menu []struct{ Name, Location string }
-		}{Type: "solidcoredata.org/system-menu", Menu: []struct{ Name, Location string }{{"File", "file"}, {"Edit", "edit"}}})},
-	},
-	CN{"code", "solidcoredata.org/system-menu"}: []*ReturnItem{
-		{Action: "execute", Body: widgetMenu},
-	},
 }
 
 // Attempting to fit the previously defined model of SPA code/config into
@@ -239,19 +207,20 @@ var requestMap = map[CN][]*ReturnItem{
 
 const serviceName = "solidcoredata.org/base"
 
+var spaBody = map[string]string{
+	serviceName + "/spa/system-menu": widgetMenu,
+}
+
 func (s *ServiceConfig) createConfig() *api.ServiceBundle {
 	c := &api.ServiceBundle{
 		Name: serviceName,
 		Resource: []*api.Resource{
 			{Name: "loader", Type: api.ResourceURL},
 			{Name: "login", Type: api.ResourceURL},
-			{Name: "init.js", Type: api.ResourceURL},
 			{Name: "fetch-ui", Type: api.ResourceURL, Consume: api.ResourceSPACode},
 			{Name: "favicon", Type: api.ResourceURL},
 
-			{Name: "spa/setup", Type: api.ResourceSPACode}, // Remove?
 			{Name: "spa/system-menu", Type: api.ResourceSPACode},
-			{Name: "app/system-menu", Parent: "solidcoredata.org/base/spa/system-menu", Configuration: []byte(`{"File":"Quit"}`)},
 		},
 	}
 	return c
@@ -281,31 +250,23 @@ func (s *ServiceConfig) ServeHTTP(ctx context.Context, r *api.HTTPRequest) (*api
 	case serviceName + "/login":
 		resp.ContentType = "text/html"
 		resp.Body = loginNoneHTML
-	case serviceName + "/init.js":
-		resp.ContentType = "	application/javascript"
-		resp.Body = spaInitJS
 	case serviceName + "/fetch-ui":
 		fmt.Printf("fetch-ui: version=%q\n", r.Version)
 		s.mu.RLock()
 		setup, foundSetup := s.setupVersion[r.Version]
 		s.mu.RUnlock()
-		
+
 		if !foundSetup {
 			return nil, fmt.Errorf("unable to find version %s", r.Version)
 		}
-		
-		
-		cats := r.URL.Query.Values["category"].Value
+
+		remotes := map[*Connection][]*ReturnItem{}
 		names := r.URL.Query.Values["name"].Value
-		if len(cats) != len(names) {
-			return nil, errors.New("fetch-ui: category and name have un-equal lengths")
-		}
+
 		// Lookup names in service registry.
 		// Hit all services in parallel and agg all results and respond to client.
-		ret := make([]*ReturnItem, 0, len(cats)+2)
-		for i := range cats {
-			c, n := cats[i], names[i]
-			
+		ret := make([]*ReturnItem, 0, len(names))
+		for _, n := range names {
 			res, resFound := setup.lookup[n]
 			if resFound {
 				fmt.Printf("Resource found for %q with config %q\n", n, string(res.Resource.Configuration))
@@ -315,6 +276,7 @@ func (s *ServiceConfig) ServeHTTP(ctx context.Context, r *api.HTTPRequest) (*api
 					fmt.Printf("\t%s\n", name)
 				}
 			}
+
 			// Send config to client.
 			// Client look for parent.
 			// If parent and include not found fetch.
@@ -323,13 +285,58 @@ func (s *ServiceConfig) ServeHTTP(ctx context.Context, r *api.HTTPRequest) (*api
 			//
 			// Set category=ResourceType on client.
 			// This will partition off the namespace.
-			
-			riList, found := requestMap[CN{c, n}]
-			if !found {
-				return nil, fmt.Errorf("fetch-ui: category=%q name=%q not found", c, n)
+			ri := &ReturnItem{
+				Name:    res.Resource.Name,
+				Type:    res.Resource.Parent,
+				Require: res.Resource.Include,
 			}
-			ret = append(ret, riList...)
+			if len(res.Resource.Configuration) > 0 {
+				ri.Body = string(res.Resource.Configuration)
+			} else if body, found := spaBody[res.Resource.Name]; found {
+				ri.Body = body
+			} else {
+				remotes[res.Conn] = append(remotes[res.Conn], ri)
+			}
+			ret = append(ret, ri)
 		}
+
+		if len(remotes) > 0 {
+			g, ctx := errgroup.WithContext(ctx)
+			for conn, riList := range remotes {
+				riList := riList
+				client := api.NewSPAClient(conn.Conn)
+				g.Go(func() error {
+					list := make([]string, len(riList))
+					for i := 0; i < len(list); i++ {
+						list[i] = riList[i].Name
+					}
+					resp, err := client.FetchUI(ctx, &api.FetchUIRequest{List: list})
+					if err != nil {
+						return err
+					}
+					for _, item := range resp.List {
+						for _, ri := range riList {
+							if item.Name != ri.Name {
+								continue
+							}
+							ri.Body = item.Body
+							break
+						}
+					}
+					return nil
+				})
+			}
+			if err := g.Wait(); err != nil {
+				return nil, err
+			}
+		}
+		for _, ri := range ret {
+			// TODO(kardianos): list all missing names.
+			if len(ri.Body) == 0 {
+				return nil, fmt.Errorf("missing body for %q", ri.Name)
+			}
+		}
+
 		var err error
 		resp.ContentType = "application/json"
 		resp.Body, err = json.Marshal(ret)
@@ -355,37 +362,15 @@ func (s *ServiceConfig) ServeHTTP(ctx context.Context, r *api.HTTPRequest) (*api
 }
 
 func (s *ServiceConfig) FetchUI(ctx context.Context, req *api.FetchUIRequest) (*api.FetchUIResponse, error) {
-	ret := make([]*api.FetchUIItem, 0, len(req.List)+2)
-	for _, item := range req.List {
-		riList, found := requestMap[CN{item.Category, item.Name}]
+	resp := &api.FetchUIResponse{}
+	for _, name := range req.List {
+		body, found := spaBody[name]
 		if !found {
-			return nil, fmt.Errorf("category=%q name=%q not found", item.Category, item.Name)
+			continue
 		}
-		for _, ri := range riList {
-			action := api.FetchUIAction_ActionMissing
-			switch ri.Action {
-			case "execute":
-				action = api.FetchUIAction_ActionExecute
-			case "store":
-				action = api.FetchUIAction_ActionStore
-			}
-			require := make([]*api.FetchUICN, len(ri.Require))
-			for i, cn := range ri.Require {
-				require[i] = &api.FetchUICN{
-					Category: cn.Category,
-					Name:     cn.Name,
-				}
-			}
-			ret = append(ret, &api.FetchUIItem{
-				Action:   action,
-				Category: ri.Category,
-				Name:     ri.Name,
-				Require:  require,
-				Body:     ri.Body,
-			})
-		}
+		resp.List = append(resp.List, &api.FetchUIItem{Name: name, Body: body})
 	}
-	return &api.FetchUIResponse{List: ret}, nil
+	return resp, nil
 }
 
 func (s *ServiceConfig) Config() chan<- *api.ServiceConfig {

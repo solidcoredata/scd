@@ -90,6 +90,11 @@ func (s *RouterServer) startHTTP(ctx context.Context, bindHTTP string) {
 func (s *RouterServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	const redirectQueryKey = "redirect-to"
 	s.rlk.RLock()
+	if s.router == nil {
+		s.rlk.RUnlock()
+		http.Error(w, "not configured", http.StatusInternalServerError)
+		return
+	}
 	version := s.router.Version
 	appToken, found := s.router.App[r.Host]
 	s.rlk.RUnlock()
@@ -433,7 +438,7 @@ func (rr *RouterRun) updateServices(ctx context.Context, action api.ServiceConfi
 			if err != nil {
 				// Don't error out, we want to try to remove from each service,
 				// even if one fails.
-				log.Println("router: failed to remove service config %v", err)
+				log.Printf("router: failed to remove service config %v", err)
 			}
 		}
 		return nil
@@ -453,6 +458,9 @@ func (rr *RouterRun) updateServices(ctx context.Context, action api.ServiceConfi
 
 		for _, lbundle := range app.LoginBundle {
 			for _, include := range lbundle.Bundle.IncludeRes {
+				if include.ParentRes == nil {
+					continue
+				}
 				switch include.ParentRes.Consume {
 				case api.ResourceNone:
 				default:
@@ -467,6 +475,9 @@ func (rr *RouterRun) updateServices(ctx context.Context, action api.ServiceConfi
 
 		for _, lbundle := range app.LoginBundle {
 			for _, include := range lbundle.Bundle.IncludeRes {
+				if include.ParentRes == nil {
+					continue
+				}
 				sendTo, ok := consume[include.ParentRes.Type]
 				if !ok {
 					continue

@@ -7,7 +7,6 @@ package api
 
 import (
 	"context"
-	"errors"
 
 	proto "github.com/golang/protobuf/proto"
 )
@@ -34,19 +33,6 @@ var (
 	fetchUIActionExecuteBytes = []byte("execute")
 	fetchUIActionStoreBytes   = []byte("store")
 )
-
-func (a FetchUIAction) MarshalJSON() ([]byte, error) {
-	switch a {
-	default:
-		return nil, errors.New("unknown action type")
-	case FetchUIAction_ActionExecute:
-		return fetchUIActionExecuteBytes, nil
-	case FetchUIAction_ActionStore:
-		return fetchUIActionStoreBytes, nil
-	case FetchUIAction_ActionMissing:
-		return fetchUIActionMissingBytes, nil
-	}
-}
 
 type ResourceType = string
 

@@ -39,7 +39,6 @@ It has these top-level messages:
 	ApplicationBundle
 	ServiceBundle
 	FetchUIRequest
-	FetchUICN
 	FetchUIResponse
 	FetchUIItem
 */
