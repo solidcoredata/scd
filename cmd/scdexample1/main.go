@@ -71,9 +71,10 @@ func (s *ServiceConfig) createConfig() *api.ServiceBundle {
 			{Name: "ui/fetch-ui", Parent: "solidcoredata.org/base/fetch-ui", Configuration: (&api.ConfigureURL{MapTo: "/api/fetch-ui"}).EncodeMust()},
 			{Name: "ui/favicon", Parent: "solidcoredata.org/base/favicon", Configuration: (&api.ConfigureURL{MapTo: "/ui/favicon"}).EncodeMust()},
 
-			{Name: "ui/loader", Parent: "solidcoredata.org/base/loader", Configuration: (&api.ConfigureURL{MapTo: "/", Config: `{"Next": "example-1.solidcoredata.org/app/spa/system-menu"}`}).EncodeMust()},
+			{Name: "ui/loader", Parent: "solidcoredata.org/base/loader", Include: []string{"example-1.solidcoredata.org/app/spa/system-menu"}, Configuration: (&api.ConfigureURL{MapTo: "/", Config: `{"Next": "example-1.solidcoredata.org/app/spa/system-menu"}`}).EncodeMust()},
 
-			{Name: "spa/funny", Type: api.ResourceSPACode},
+			{Name: "ctl/spa/funny", Type: api.ResourceSPACode},
+			{Name: "spa/funny", Parent: serviceName + "/ctl/spa/funny", Configuration: JSON(struct{}{})},
 
 			{Name: "spa/system-menu", Parent: "solidcoredata.org/base/spa/system-menu", Include: []string{serviceName + "/spa/funny"}, Configuration: JSON(struct {
 				Menu []struct{ Name, Location string }
@@ -95,8 +96,6 @@ func (s *ServiceConfig) createConfig() *api.ServiceBundle {
 					"example-1.solidcoredata.org/app/ui/loader",
 					"example-1.solidcoredata.org/app/ui/fetch-ui",
 					"example-1.solidcoredata.org/app/ui/favicon",
-					"example-1.solidcoredata.org/app/spa/system-menu",
-					"example-1.solidcoredata.org/app/spa/funny",
 				},
 			},
 		},
@@ -126,7 +125,19 @@ func (s *ServiceConfig) createConfig() *api.ServiceBundle {
 }
 
 var spaBody = map[string]string{
-	serviceName + "/spa/funny": "console.log('dancing bears!');",
+	serviceName + "/ctl/spa/funny": `console.log('dancing bears!');
+function f(config) {
+	console.log("funny created");
+}
+
+f.prototype.ElementRoot = function() {
+	return this.d;
+};
+f.prototype.Open = function() {
+	console.log("application started");
+};
+system.init.set("example-1.solidcoredata.org/app/ctl/spa/funny", f);
+`,
 }
 
 func (s *ServiceConfig) FetchUI(ctx context.Context, req *api.FetchUIRequest) (*api.FetchUIResponse, error) {

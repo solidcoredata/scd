@@ -296,6 +296,9 @@ func (r *routesService) UpdateServiceConfig(ctx context.Context, config *api.Ser
 			if r.Type == api.ResourceSPACode {
 				fmt.Printf("\t\t\tconfig=%s\n", string(r.Configuration))
 			}
+			for _, in := range r.Include {
+				fmt.Printf("\t\t\tinclude=%s\n", in)
+			}
 		}
 	}
 	if ch := r.sc.Config(); ch != nil {

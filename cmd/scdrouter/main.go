@@ -28,6 +28,7 @@ import (
 
 	google_protobuf1 "github.com/golang/protobuf/ptypes/empty"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 )
 
 const (
@@ -218,14 +219,15 @@ func (s *RouterServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	appResp, err := cr.ParentRes.Handler.ServeHTTP(ctx, appReq)
 	if err != nil {
-		/*if status, ok := err.(HTTPError); ok {
-			msg := status.Msg
-			if len(msg) == 0 {
-				msg = status.Err.Error()
+		if code := grpc.Code(err); code != codes.Unknown {
+			status := http.StatusInternalServerError
+			switch code {
+			case codes.PermissionDenied:
+				status = http.StatusForbidden
 			}
-			http.Error(w, msg, status.Status)
+			http.Error(w, grpc.ErrorDesc(err), status)
 			return
-		}*/
+		}
 		lb, found := app.LoginBundle[api.LoginState_Error]
 		if !found {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -412,6 +414,56 @@ func NewRouterRun() *RouterRun {
 }
 
 func (rr *RouterRun) updateServices(ctx context.Context, action api.ServiceConfigAction) error {
+	fmt.Println("== RouterRun ==")
+	for _, app := range rr.App {
+		fmt.Printf("App %s\n", app.App.Host)
+		for ls, lb := range app.App.LoginBundle {
+			fmt.Printf("\t%q\n", ls)
+			listA := map[*Res]bool{lb.Bundle: true}
+			listB := map[*Res]bool{}
+			del := []*Res{}
+
+			for len(listA) > 0 {
+				del = del[:0]
+				for item := range listA {
+					if !listB[item] {
+						listB[item] = true
+					}
+					if item.ParentRes != nil && !listB[item.ParentRes] {
+						listB[item.ParentRes] = true
+					}
+					for _, include := range item.IncludeRes {
+						if !listB[include] {
+							listB[include] = true
+						}
+					}
+				}
+				for item := range listB {
+					if item.ParentRes != nil && !listB[item.ParentRes] {
+						listA[item.ParentRes] = true
+					}
+					for _, include := range item.IncludeRes {
+						if !listB[include] {
+							listA[include] = true
+						}
+					}
+				}
+				for item := range listA {
+					if listB[item] {
+						del = append(del, item)
+					}
+				}
+				for _, d := range del {
+					delete(listA, d)
+				}
+			}
+
+			for item := range listB {
+				fmt.Printf("\t\t%s\n", item.Name)
+			}
+		}
+	}
+	fmt.Println("== RouterRun Done ==")
 	if action == api.ServiceConfigAction_Remove {
 		fmt.Printf("REMOVE %s\n", rr.Version)
 
@@ -421,6 +473,9 @@ func (rr *RouterRun) updateServices(ctx context.Context, action api.ServiceConfi
 			app := appToken.App
 			for _, lbundle := range app.LoginBundle {
 				for _, include := range lbundle.Bundle.IncludeRes {
+					if include.ParentRes == nil {
+						continue
+					}
 					switch include.ParentRes.Consume {
 					case api.ResourceNone:
 					default:
@@ -453,60 +508,85 @@ func (rr *RouterRun) updateServices(ctx context.Context, action api.ServiceConfi
 	// 1. Lookup where to send service from resource type.
 	// 2. Add CR/PR to destination bucket.
 
+	var setupConsume func(res, parent *Res)
+	setupConsume = func(res, parent *Res) {
+		if res == nil {
+			return
+		}
+		setupConsume(res.ParentRes, res)
+		for _, include := range res.IncludeRes {
+			setupConsume(include, res)
+			if include.ParentRes == nil {
+				fmt.Printf("skipping %q\n", include.Name)
+				continue
+			}
+			switch include.ParentRes.Consume {
+			case api.ResourceNone:
+			default:
+				consume[include.ParentRes.Consume] = include.ParentRes.Service
+				svcs[include.ParentRes.Service] = append(svcs[include.ParentRes.Service], include.ParentRes.Consume)
+			}
+		}
+		if parent == nil {
+			return
+		}
+		parent.Include = append(parent.Include, res.Include...)
+		parent.IncludeRes = append(parent.IncludeRes, res.IncludeRes...)
+	}
+	var setupService func(res *Res)
+	setupService = func(res *Res) {
+		if res == nil {
+			return
+		}
+		for _, include := range res.IncludeRes {
+			setupService(include)
+			if include.ParentRes == nil {
+				continue
+			}
+			sendTo, ok := consume[include.ParentRes.Type]
+			if !ok {
+				continue
+			}
+
+			assocService, ok := servicePerConsumer[sendTo]
+			if !ok {
+				assocService = map[*serviceDef]map[string]*Res{}
+				servicePerConsumer[sendTo] = assocService
+			}
+			ur, ok := assocService[include.Service]
+			if !ok {
+				ur = map[string]*Res{}
+				assocService[include.Service] = ur
+			}
+			ur[include.Name] = include
+
+			if include.ParentRes == nil {
+				continue
+			}
+
+			ur, ok = assocService[include.ParentRes.Service]
+			if !ok {
+				ur = map[string]*Res{}
+				assocService[include.ParentRes.Service] = ur
+			}
+
+			ur[include.ParentRes.Name] = include.ParentRes
+		}
+		setupService(res.ParentRes)
+	}
+
 	for _, appToken := range rr.App {
 		app := appToken.App
 
 		for _, lbundle := range app.LoginBundle {
-			for _, include := range lbundle.Bundle.IncludeRes {
-				if include.ParentRes == nil {
-					continue
-				}
-				switch include.ParentRes.Consume {
-				case api.ResourceNone:
-				default:
-					consume[include.ParentRes.Consume] = include.ParentRes.Service
-					svcs[include.ParentRes.Service] = append(svcs[include.ParentRes.Service], include.ParentRes.Consume)
-				}
-			}
+			setupConsume(lbundle.Bundle, nil)
 		}
 	}
 	for _, appToken := range rr.App {
 		app := appToken.App
 
 		for _, lbundle := range app.LoginBundle {
-			for _, include := range lbundle.Bundle.IncludeRes {
-				if include.ParentRes == nil {
-					continue
-				}
-				sendTo, ok := consume[include.ParentRes.Type]
-				if !ok {
-					continue
-				}
-
-				assocService, ok := servicePerConsumer[sendTo]
-				if !ok {
-					assocService = map[*serviceDef]map[string]*Res{}
-					servicePerConsumer[sendTo] = assocService
-				}
-				ur, ok := assocService[include.Service]
-				if !ok {
-					ur = map[string]*Res{}
-					assocService[include.Service] = ur
-				}
-				ur[include.Name] = include
-
-				if include.ParentRes == nil {
-					continue
-				}
-
-				ur, ok = assocService[include.ParentRes.Service]
-				if !ok {
-					ur = map[string]*Res{}
-					assocService[include.ParentRes.Service] = ur
-				}
-
-				ur[include.ParentRes.Name] = include.ParentRes
-			}
+			setupService(lbundle.Bundle)
 		}
 	}
 
@@ -529,6 +609,7 @@ func (rr *RouterRun) updateServices(ctx context.Context, action api.ServiceConfi
 					Consume:       r.Consume,
 					Parent:        r.Parent,
 					Configuration: r.Configuration,
+					Include:       r.Include,
 				})
 			}
 		}

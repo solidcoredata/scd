@@ -288,7 +288,7 @@ func (s *ServiceConfig) ServeHTTP(ctx context.Context, r *api.HTTPRequest) (*api
 			ri := &ReturnItem{
 				Name:    res.Resource.Name,
 				Type:    res.Resource.Parent,
-				Require: res.Resource.Include,
+				Require:res.Resource.Include,
 			}
 			if len(res.Resource.Configuration) > 0 {
 				ri.Body = string(res.Resource.Configuration)
