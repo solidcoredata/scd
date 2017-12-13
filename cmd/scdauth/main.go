@@ -23,7 +23,7 @@ func main() {
 	service.Setup(ctx, NewServiceConfig())
 }
 
-var _ service.ServiceConfigration = &ServiceConfig{}
+var _ service.Configration = &ServiceConfig{}
 
 func NewServiceConfig() *ServiceConfig {
 	s := &ServiceConfig{

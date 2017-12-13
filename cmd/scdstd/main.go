@@ -29,7 +29,7 @@ func main() {
 	service.Setup(ctx, NewServiceConfig(ctx))
 }
 
-var _ service.ServiceConfigration = &ServiceConfig{}
+var _ service.Configration = &ServiceConfig{}
 
 func NewServiceConfig(ctx context.Context) *ServiceConfig {
 	s := &ServiceConfig{
@@ -288,7 +288,7 @@ func (s *ServiceConfig) ServeHTTP(ctx context.Context, r *api.HTTPRequest) (*api
 			ri := &ReturnItem{
 				Name:    res.Resource.Name,
 				Type:    res.Resource.Parent,
-				Require:res.Resource.Include,
+				Require: res.Resource.Include,
 			}
 			if len(res.Resource.Configuration) > 0 {
 				ri.Body = string(res.Resource.Configuration)
@@ -361,6 +361,13 @@ func (s *ServiceConfig) ServeHTTP(ctx context.Context, r *api.HTTPRequest) (*api
 	return resp, nil
 }
 
+// FetchUI should watch the FS for changes.
+//
+// First look for a manafest file. Key the file off the executable name, minus any exe extension.
+// The manafest lists the various components that one or more files provides.
+// Watch the manafest file for changes and files referenced from the manafest for changes.
+//
+// There are three mods: relative to source package, relative to executable, and embedded.
 func (s *ServiceConfig) FetchUI(ctx context.Context, req *api.FetchUIRequest) (*api.FetchUIResponse, error) {
 	resp := &api.FetchUIResponse{}
 	for _, name := range req.List {
@@ -371,6 +378,10 @@ func (s *ServiceConfig) FetchUI(ctx context.Context, req *api.FetchUIRequest) (*
 		resp.List = append(resp.List, &api.FetchUIItem{Name: name, Body: body})
 	}
 	return resp, nil
+}
+
+func (s *ServiceConfig) watchConfig(ctx context.Context) {
+
 }
 
 func (s *ServiceConfig) Config() chan<- *api.ServiceConfig {

@@ -102,13 +102,16 @@ window.system = (function() {
 	var sys = {init: init};
 	
 	init.errors = [];
-	init.onError = function() {
-		if(!console || !console.error) {
-			return;
-		}
+	init.onerror = function() {
 		for(let i = 0; i < system.init.errors.length; i++) {
 			let e = system.init.errors[i];
-			console.error(e.Name, e.On, e.Error, e.Input);
+			let el = document.createElement("div");
+			el.style.color = "red";
+			el.innerText = [e.Name, e.On, e.Error, e.Input].join(", ");
+			document.body.append(el);
+			if(console && console.error) {
+				console.error(e.Name, e.On, e.Error, e.Input);
+			}
 		}
 	};
 	
@@ -122,8 +125,8 @@ window.system = (function() {
 				Input: "api/fetch-ui",
 			});
 		}
-		if(typeof init.onError === "function") {
-			init.onError();
+		if(typeof init.onerror === "function") {
+			init.onerror();
 		}
 		if(typeof done === "function") {
 			done(msg);
@@ -183,8 +186,8 @@ window.system = (function() {
 			}
 		} 
 		
-		if(hasError && typeof init.onError === "function") {
-			init.onError();
+		if(hasError && typeof init.onerror === "function") {
+			init.onerror();
 		}
 		
 		if(typeof done === "function") {

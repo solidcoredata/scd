@@ -321,9 +321,7 @@ func (m *LogoutReq) String() string            { return proto.CompactTextString(
 func (*LogoutReq) ProtoMessage()               {}
 func (*LogoutReq) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{5} }
 
-type isLogoutReq_Value interface {
-	isLogoutReq_Value()
-}
+type isLogoutReq_Value interface{ isLogoutReq_Value() }
 
 type LogoutReq_SessionTokenValue struct {
 	SessionTokenValue string `protobuf:"bytes,1,opt,name=SessionTokenValue,oneof"`

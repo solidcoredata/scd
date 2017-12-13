@@ -45,8 +45,8 @@ func onErrf(t byte, f string, v ...interface{}) {
 	onErr(t, fmt.Sprintf(f, v...))
 }
 
-// ServiceConfiguration
-type ServiceConfigration interface {
+// Configuration
+type Configration interface {
 	ServiceBundle() <-chan *api.ServiceBundle
 	Config() chan<- *api.ServiceConfig
 	HTTPServer() (api.HTTPServer, bool)
@@ -59,7 +59,7 @@ type RemoteService struct {
 	Address string
 }
 
-func Setup(ctx context.Context, sc ServiceConfigration) {
+func Setup(ctx context.Context, sc Configration) {
 	var bindAddress, routerAddress string
 	flag.StringVar(&bindAddress, "bind", "localhost:0", "address and port to bind to")
 	flag.StringVar(&routerAddress, "router", "", "optionally notify specified router")
@@ -186,7 +186,7 @@ func registerOnRouter(ctx context.Context, routerAddress, serviceAddress string)
 }
 
 type routesService struct {
-	sc ServiceConfigration
+	sc Configration
 
 	doneLock sync.RWMutex
 	done     bool
@@ -200,7 +200,7 @@ type routesService struct {
 	latest chan chan *api.ServiceBundle
 }
 
-func newRoutes(ctx context.Context, sc ServiceConfigration) *routesService {
+func newRoutes(ctx context.Context, sc Configration) *routesService {
 	r := &routesService{
 		update: &sync.Map{},
 		latest: make(chan chan *api.ServiceBundle, 5),
@@ -280,7 +280,6 @@ func (r *routesService) UpdateServiceBundle(arg0 *google_protobuf1.Empty, server
 			return nil
 		}
 	}
-	return nil
 }
 
 // TODO(kardianos): include a version string in each resource so the client
