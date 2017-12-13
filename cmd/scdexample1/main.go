@@ -14,6 +14,15 @@ import (
 	"github.com/solidcoredata/scd/service"
 )
 
+/*
+	1. Push the configuration fetch into the service.Setup.
+	2. Use res files for all services.
+	3. Add some custom HTTP point to scdexample1.
+	4. Add in a file watch.
+	5. Push router config update.
+	6. Add a hook to the UI to refresh components.
+*/
+
 func main() {
 	ctx := context.TODO()
 
@@ -62,21 +71,6 @@ func (s *ServiceConfig) AuthServer() (api.AuthServer, bool) {
 func (s *ServiceConfig) SPAServer() (api.SPAServer, bool) {
 	return s, true
 }
-
-/*
-	We could start with a single file, either toml or jsonnet:
-	"github.com/kezhuw/toml" or "github.com/google/go-jsonnet"
-
-	After reading the file, watch it with:
-	"github.com/cortesi/moddwatch"
-
-	First Try:
-	Put the config in a toml file, include a resource to file mapping.
-	Read actual resource from file.
-
-	Later support wildcard under path support.
-	(same as httprouter *filepath feature)
-*/
 
 func (s *ServiceConfig) FetchUI(ctx context.Context, req *api.FetchUIRequest) (*api.FetchUIResponse, error) {
 	resp := &api.FetchUIResponse{}
