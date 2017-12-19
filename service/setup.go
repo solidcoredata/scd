@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -47,11 +48,9 @@ func onErrf(t byte, f string, v ...interface{}) {
 
 // Configuration
 type Configration interface {
-	ServiceBundle() <-chan *api.ServiceBundle
-	Config() chan<- *api.ServiceConfig
 	HTTPServer() (api.HTTPServer, bool)
 	AuthServer() (api.AuthServer, bool)
-	SPAServer() (api.SPAServer, bool)
+	BundleUpdate(*api.ServiceBundle)
 }
 
 type RemoteService struct {
@@ -59,18 +58,49 @@ type RemoteService struct {
 	Address string
 }
 
-func Setup(ctx context.Context, sc Configration) {
+type Service struct {
+	r *routesService
+}
+
+func (s *Service) ResConn(version string) (map[string]ConnRes, bool) {
+	s.r.setupLock.RLock()
+	cr, found := s.r.setupVersion[version]
+	s.r.setupLock.RUnlock()
+	if !found {
+		return nil, false
+	}
+	return cr.lookup, found
+}
+
+func (s *Service) SPA(name string) (*ResourceFile, bool) {
+	s.r.spaLock.RLock()
+	rf, found := s.r.spa[name]
+	s.r.spaLock.RUnlock()
+	return rf, found
+}
+
+func New() *Service {
+	s := &Service{}
+	return s
+}
+
+func (s *Service) Setup(ctx context.Context, sc Configration) {
 	var bindAddress, routerAddress string
 	flag.StringVar(&bindAddress, "bind", "localhost:0", "address and port to bind to")
 	flag.StringVar(&routerAddress, "router", "", "optionally notify specified router")
 	flag.Parse()
 
+	server := grpc.NewServer()
+	r, err := newRoutes(ctx, sc)
+	if err != nil {
+		onErrf(printMessage, "unable to create routes: %v", err)
+	}
+	s.r = r
+	api.RegisterRoutesServer(server, s.r)
+
 	if len(bindAddress) == 0 {
 		onErr(printDefaults, `missing "bind" argument`)
 	}
-	server := grpc.NewServer()
-	r := newRoutes(ctx, sc)
-	api.RegisterRoutesServer(server, r)
 
 	if handler, is := sc.HTTPServer(); is {
 		api.RegisterHTTPServer(server, handler)
@@ -78,9 +108,7 @@ func Setup(ctx context.Context, sc Configration) {
 	if handler, is := sc.AuthServer(); is {
 		api.RegisterAuthServer(server, handler)
 	}
-	if handler, is := sc.SPAServer(); is {
-		api.RegisterSPAServer(server, handler)
-	}
+	api.RegisterSPAServer(server, s.r)
 
 	l, err := net.Listen("tcp", bindAddress)
 	if err != nil {
@@ -185,67 +213,133 @@ func registerOnRouter(ctx context.Context, routerAddress, serviceAddress string)
 	})
 }
 
+type ConnRes struct {
+	Conn     *grpc.ClientConn
+	Resource *api.Resource
+}
+
+type setup struct {
+	lookup map[string]ConnRes
+
+	// RPC connections specific to this version.
+	conns map[string]*grpc.ClientConn
+}
+
 type routesService struct {
 	sc Configration
 
-	doneLock sync.RWMutex
-	done     bool
+	spaLock sync.RWMutex
+	spa     map[string]*ResourceFile
 
-	// update is a set of "chan *api.ServiceBundle) where the value is a boolean
-	// set to true.
-	update *sync.Map
+	bundle chan *api.ServiceBundle
+	config chan *api.ServiceConfig
 
-	// latest is the internal channel that provides a thread safe request-response
-	// to receive the latest service bundle.
-	latest chan chan *api.ServiceBundle
+	setupLock    sync.RWMutex
+	setupVersion map[string]*setup
+	conns        map[string]*grpc.ClientConn // All rpc connections created the server.
 }
 
-func newRoutes(ctx context.Context, sc Configration) *routesService {
+func newRoutes(ctx context.Context, sc Configration) (*routesService, error) {
 	r := &routesService{
-		update: &sync.Map{},
-		latest: make(chan chan *api.ServiceBundle, 5),
-		sc:     sc,
+		sc: sc,
+
+		bundle:       make(chan *api.ServiceBundle, 5),
+		config:       make(chan *api.ServiceConfig, 5),
+		setupVersion: make(map[string]*setup, 7),
+		conns:        make(map[string]*grpc.ClientConn, 7),
 	}
-	go r.run(ctx)
-	return r
+
+	execPath, err := os.Executable()
+	if err != nil {
+		return nil, err
+	}
+	_, execName := filepath.Split(execPath)
+	execName = strings.TrimSuffix(execName, filepath.Ext(execName))
+	scr, err := NewSCReader(filepath.Join("res", execName+".jsonnet"))
+	if err != nil {
+		return nil, err
+	}
+	scr.changes <- nil
+
+	go r.run(ctx, scr)
+	return r, nil
 }
 
-func (r *routesService) run(ctx context.Context) {
-	var latest *api.ServiceBundle
-
+func (r *routesService) run(ctx context.Context, scr *SCReader) {
 	for {
 		select {
-		case sb, ok := <-r.sc.ServiceBundle():
-			if !ok {
-				r.doneLock.Lock()
-				r.done = true
-				defer r.doneLock.Unlock()
+		case <-scr.changes:
+			sb, spa, err := scr.open()
+			if err != nil {
+				fmt.Printf("failed to read file config: %v\n", err)
+			} else {
+				fmt.Printf("updated config for %q\n", sb.Name)
+				r.bundle <- sb
+				r.spaLock.Lock()
+				r.spa = spa
+				r.spaLock.Unlock()
 
-				del := make([]chan *api.ServiceBundle, 0, 5)
-				r.update.Range(func(key interface{}, value interface{}) bool {
-					u := key.(chan *api.ServiceBundle)
-					del = append(del, u)
-					return true
-				})
-				for _, key := range del {
-					r.update.Delete(key)
-				}
-				return
+				r.sc.BundleUpdate(sb)
 			}
-			latest = sb
-			r.update.Range(func(key interface{}, value interface{}) bool {
-				u := key.(chan *api.ServiceBundle)
-				u <- sb
-				return true
-			})
-		case lchan := <-r.latest:
-			if latest != nil {
-				lchan <- latest
+		case sc := <-r.config:
+			switch sc.Action {
+			case api.ServiceConfigAction_Remove:
+				// Lookup all endpoint connections.
+				// If any are unused then close them.
+				r.setupLock.Lock()
+				delete(r.setupVersion, sc.Version)
+				closeConns := make([]string, 3)
+				for ep, conn := range r.conns {
+					found := false
+					for _, ver := range r.setupVersion {
+						if _, verFound := ver.conns[ep]; verFound {
+							found = true
+							break
+						}
+					}
+					if !found {
+						conn.Close()
+						closeConns = append(closeConns, ep)
+					}
+				}
+				for _, ep := range closeConns {
+					delete(r.conns, ep)
+				}
+				r.setupLock.Unlock()
+
+			case api.ServiceConfigAction_Add:
+				// Lookup all endpoint connections.
+				// If any are new then create them and add them.
+				setup := &setup{
+					lookup: make(map[string]ConnRes, len(sc.List)*10),
+					conns:  make(map[string]*grpc.ClientConn, len(sc.List)),
+				}
+
+				r.setupLock.Lock()
+				for _, sce := range sc.List {
+					conn, found := r.conns[sce.Endpoint]
+					if !found {
+						cc, err := grpc.DialContext(ctx, sce.Endpoint, grpc.WithInsecure())
+						if err != nil {
+							fmt.Printf("Failed to dial rpc %q: %v\n", sce.Endpoint, err)
+							continue
+						}
+						conn = cc
+						r.conns[sce.Endpoint] = conn
+					}
+					setup.conns[sce.Endpoint] = conn
+					for _, res := range sce.Resource {
+						setup.lookup[res.Name] = ConnRes{
+							Conn:     conn,
+							Resource: res,
+						}
+					}
+				}
+				r.setupVersion[sc.Version] = setup
+				r.setupLock.Unlock()
 			}
 		case <-ctx.Done():
-			r.doneLock.Lock()
-			r.done = true
-			r.doneLock.Unlock()
+			scr.Close()
 			return
 		}
 	}
@@ -253,21 +347,11 @@ func (r *routesService) run(ctx context.Context) {
 
 // Update connected services information, such as other service locations and SPA code and configs.
 func (r *routesService) UpdateServiceBundle(arg0 *google_protobuf1.Empty, server api.Routes_UpdateServiceBundleServer) error {
-	r.doneLock.RLock()
-	if r.done {
-		r.doneLock.RUnlock()
-		return grpc.ErrServerStopped
-	}
-
-	update := make(chan *api.ServiceBundle, 5)
-	r.update.Store(update, true)
-	defer r.update.Delete(update)
-	r.doneLock.RUnlock()
-
-	r.latest <- update
+	// TODO(kardianos): This will only work for a single service connected currently.
+	// r.bundle is used directly, rather then through a manafold.
 	for {
 		select {
-		case bundle, ok := <-update:
+		case bundle, ok := <-r.bundle:
 			if !ok {
 				return nil
 			}
@@ -277,7 +361,7 @@ func (r *routesService) UpdateServiceBundle(arg0 *google_protobuf1.Empty, server
 				continue
 			}
 		case <-server.Context().Done():
-			return nil
+			return grpc.ErrServerStopped
 		}
 	}
 }
@@ -300,8 +384,21 @@ func (r *routesService) UpdateServiceConfig(ctx context.Context, config *api.Ser
 			}
 		}
 	}
-	if ch := r.sc.Config(); ch != nil {
-		ch <- config
-	}
+	r.config <- config
 	return &google_protobuf1.Empty{}, nil
+}
+
+func (r *routesService) FetchUI(ctx context.Context, req *api.FetchUIRequest) (*api.FetchUIResponse, error) {
+	resp := &api.FetchUIResponse{}
+	r.spaLock.RLock()
+	defer r.spaLock.RUnlock()
+
+	for _, name := range req.List {
+		body, found := r.spa[name]
+		if !found {
+			continue
+		}
+		resp.List = append(resp.List, &api.FetchUIItem{Name: name, Body: body.Content})
+	}
+	return resp, nil
 }

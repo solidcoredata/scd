@@ -1,14 +1,17 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/solidcoredata/scd/api"
 
+	"github.com/cortesi/moddwatch"
 	"github.com/google/go-jsonnet"
 )
 
@@ -32,6 +35,7 @@ import (
 type Resource struct {
 	Name    string
 	Type    string // api.ResourceType
+	Consume string // api.ResourceType
 	Parent  string
 	Include []string
 	C       map[string]interface{}
@@ -52,32 +56,65 @@ type Application struct {
 
 // ResourceFile represents a donwloadable ll
 type ResourceFile struct {
-	Name string
-	File string
+	Name    string
+	File    string
+	Content string
 }
 
 type ServiceConfiguration struct {
 	Name        string
 	Application []Application
 	Resource    []Resource
-	Files       []ResourceFile
+	Files       []*ResourceFile
 }
 
-func OpenServiceConfiguration(p string) (*api.ServiceBundle, map[string]string, error) {
-	vm := jsonnet.MakeVM()
-
+func NewSCReader(p string) (*SCReader, error) {
 	pabs, err := filepath.Abs(p)
 	if err != nil {
-		return nil, nil, fmt.Errorf("unable to get ABS file path of %q: %v", p, err)
+		return nil, fmt.Errorf("unable to get ABS file path of %q: %v", p, err)
 	}
 	dir, _ := filepath.Split(pabs)
-	vm.Importer(&jsonnet.FileImporter{JPaths: []string{dir}})
 
-	bfile, err := ioutil.ReadFile(p)
+	ch := make(chan *moddwatch.Mod, 6)
+	watcher, err := moddwatch.Watch(dir, []string{"*.jsonnet", "**/*.html", "**/*.js"}, nil, time.Millisecond*500, ch)
+	if err != nil {
+		return nil, err
+	}
+
+	r := &SCReader{
+		vm:         jsonnet.MakeVM(),
+		configPath: pabs,
+		dir:        dir,
+		watcher:    watcher,
+		changes:    ch,
+	}
+	r.vm.Importer(&jsonnet.FileImporter{JPaths: []string{dir}})
+
+	return r, nil
+}
+
+type SCReader struct {
+	ctx context.Context
+	vm  *jsonnet.VM
+
+	configPath string
+	dir        string
+
+	watcher *moddwatch.Watcher
+	changes chan *moddwatch.Mod
+}
+
+func (r *SCReader) Close() {
+	r.watcher.Stop()
+	return
+}
+
+func (r *SCReader) open() (*api.ServiceBundle, map[string]*ResourceFile, error) {
+	bfile, err := ioutil.ReadFile(r.configPath)
 	if err != nil {
 		return nil, nil, err
 	}
-	v, err := vm.EvaluateSnippet(p, string(bfile))
+	v, err := r.vm.EvaluateSnippet(r.configPath, string(bfile))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -103,6 +140,7 @@ func OpenServiceConfiguration(p string) (*api.ServiceBundle, map[string]string, 
 			Parent:  rc.Parent,
 			Include: rc.Include,
 			Type:    rc.Type,
+			Consume: rc.Consume,
 		}
 
 		c := rc.C
@@ -177,13 +215,17 @@ func OpenServiceConfiguration(p string) (*api.ServiceBundle, map[string]string, 
 		}
 	}
 
-	files := make(map[string]string, len(sc.Files))
+	files := make(map[string]*ResourceFile, len(sc.Files))
 	for _, f := range sc.Files {
-		b, err := ioutil.ReadFile(filepath.Join(dir, f.File))
+		files[f.Name] = f
+		if len(f.Content) > 0 {
+			continue
+		}
+		b, err := ioutil.ReadFile(filepath.Join(r.dir, f.File))
 		if err != nil {
 			return nil, nil, fmt.Errorf("unable to read %q: %v", f.Name, err)
 		}
-		files[f.Name] = string(b)
+		f.Content = string(b)
 	}
 
 	return sb, files, nil

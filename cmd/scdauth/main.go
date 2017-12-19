@@ -20,18 +20,15 @@ import (
 
 func main() {
 	ctx := context.TODO()
-	service.Setup(ctx, NewServiceConfig())
+	s := service.New()
+	s.Setup(ctx, NewServiceConfig())
 }
 
 var _ service.Configration = &ServiceConfig{}
 
 func NewServiceConfig() *ServiceConfig {
-	s := &ServiceConfig{
-		bundle: make(chan *api.ServiceBundle, 5),
-	}
+	s := &ServiceConfig{}
 
-	s.staticConfig = s.createConfig()
-	s.bundle <- s.staticConfig
 	s.am = NewAuthenticateMemory(
 		&MemoryUser{
 			ID:       1,
@@ -48,37 +45,19 @@ func NewServiceConfig() *ServiceConfig {
 }
 
 type ServiceConfig struct {
-	bundle chan *api.ServiceBundle
-
-	staticConfig *api.ServiceBundle
-	am           *AuthenticateMemory
+	am *AuthenticateMemory
 }
 
 const serviceName = "solidcoredata.org/auth"
 
-func (s *ServiceConfig) createConfig() *api.ServiceBundle {
-	c := &api.ServiceBundle{
-		Name: serviceName,
-		Resource: []*api.Resource{
-			{Name: "login", Type: api.ResourceURL},
-			{Name: "logout", Type: api.ResourceURL},
-			{Name: "endpoint", Type: api.ResourceAuth},
-		},
-	}
-	return c
-}
-
-func (s *ServiceConfig) ServiceBundle() <-chan *api.ServiceBundle {
-	return s.bundle
-}
 func (s *ServiceConfig) HTTPServer() (api.HTTPServer, bool) {
 	return s, true
 }
 func (s *ServiceConfig) AuthServer() (api.AuthServer, bool) {
 	return s, true
 }
-func (s *ServiceConfig) SPAServer() (api.SPAServer, bool) {
-	return nil, false
+func (s *ServiceConfig) BundleUpdate(sb *api.ServiceBundle) {
+
 }
 
 func (s *ServiceConfig) ServeHTTP(ctx context.Context, r *api.HTTPRequest) (*api.HTTPResponse, error) {
@@ -135,8 +114,4 @@ func (s *ServiceConfig) ServeHTTP(ctx context.Context, r *api.HTTPRequest) (*api
 
 func (s *ServiceConfig) RequestAuth(ctx context.Context, r *api.RequestAuthReq) (*api.RequestAuthResp, error) {
 	return s.am.RequestAuth(ctx, r.Token)
-}
-
-func (s *ServiceConfig) Config() chan<- *api.ServiceConfig {
-	return nil
 }

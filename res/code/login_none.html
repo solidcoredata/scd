@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<meta charset="UTF-8">
+<link rel="icon" href="ui/favicon">
+
+<title>Login to $APP</title>
+
+<h1>Login to $APP</h1>
+
+<table>
+	<tr>
+		<td>&nbsp;
+		<td><div id=message></div>
+	<tr>
+		<td><label for=username>Username</label>
+		<td><input id=username>
+	<tr>
+		<td><label for=password>Password</label>
+		<td><input id=password type=password>
+	<tr>
+		<td>&nbsp;
+		<td><button id=login>Login</button>
+
+<script>
+var usernameInput = document.querySelector("#username");
+var passwordInput = document.querySelector("#password");
+var loginButton = document.querySelector("#login");
+var messageEl = document.querySelector("#message");
+
+loginButton.addEventListener("click", function(ev) {
+	message("");
+	login();
+});
+passwordInput.addEventListener("keypress", function(ev) {
+	message("");
+	if(ev.keyCode !== 13) {
+		return;
+	}
+	login();
+});
+usernameInput.addEventListener("keypress", function(ev) {
+	message("");
+	if(ev.keyCode !== 13) {
+		return;
+	}
+	passwordInput.select();
+});
+usernameInput.select();
+
+function message(text) {
+	messageEl.textContent = text;
+}
+function login() {
+	var req = new XMLHttpRequest();
+	req.onerror = function(ev) {
+		message("Unknown error, application may be down.");
+	}
+	req.onload = function(ev) {
+		if(ev.target.status === 403) {
+			message("Incorrect username or password.");
+			passwordInput.select();
+			return;
+		}
+		if(ev.target.status === 200) {
+			location.reload();
+			return;
+		}
+		message("Unknown error, application may be down.");
+	}
+	req.open("POST", "api/login", true);
+	req.responseType = "text";
+	var d = new FormData();
+	d.set("u", usernameInput.value);
+	d.set("p", passwordInput.value);
+	req.send(d);
+}
+</script>

@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"image"
 	"image/color"
 	"image/draw"
@@ -26,135 +27,44 @@ import (
 
 func main() {
 	ctx := context.TODO()
-	service.Setup(ctx, NewServiceConfig(ctx))
+	s := service.New()
+	sc := NewServiceConfig(ctx, s)
+	s.Setup(ctx, sc)
 }
 
 var _ service.Configration = &ServiceConfig{}
 
-func NewServiceConfig(ctx context.Context) *ServiceConfig {
-	s := &ServiceConfig{
-		bundle: make(chan *api.ServiceBundle, 5),
-		config: make(chan *api.ServiceConfig, 5),
-
-		setupVersion: make(map[string]*Setup, 5),
-		conns:        make(map[string]*Connection, 5),
+func NewServiceConfig(ctx context.Context, s *service.Service) *ServiceConfig {
+	sc := &ServiceConfig{
+		service:       s,
+		loginTemplate: template.New(""),
 	}
-	go s.run(ctx)
-
-	s.staticConfig = s.createConfig()
-	s.bundle <- s.staticConfig
-	return s
-}
-
-type Connection struct {
-	Endpoint string
-	Conn     *grpc.ClientConn
-}
-
-type Resource struct {
-	Conn     *Connection
-	Resource *api.Resource
-}
-
-type Setup struct {
-	lookup map[string]Resource
-
-	// RPC connections speific to this version.
-	conns map[string]*Connection
+	return sc
 }
 
 type ServiceConfig struct {
-	bundle chan *api.ServiceBundle
-	config chan *api.ServiceConfig
+	service *service.Service
 
-	staticConfig *api.ServiceBundle
-
-	mu           sync.RWMutex
-	setupVersion map[string]*Setup
-
-	// All rpc connections created the server.
-	conns map[string]*Connection
+	mu            sync.RWMutex
+	loginTemplate *template.Template
 }
 
-func (s *ServiceConfig) ServiceBundle() <-chan *api.ServiceBundle {
-	return s.bundle
-}
 func (s *ServiceConfig) HTTPServer() (api.HTTPServer, bool) {
 	return s, true
 }
 func (s *ServiceConfig) AuthServer() (api.AuthServer, bool) {
 	return nil, false
 }
-func (s *ServiceConfig) SPAServer() (api.SPAServer, bool) {
-	return s, true
-}
+func (s *ServiceConfig) BundleUpdate(sb *api.ServiceBundle) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-func (s *ServiceConfig) run(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case sc := <-s.config:
-			switch sc.Action {
-			case api.ServiceConfigAction_Remove:
-				// Lookup all endpoint connections.
-				// If any are unused then close them.
-				s.mu.Lock()
-				delete(s.setupVersion, sc.Version)
-				closeConns := make([]string, 3)
-				for ep, conn := range s.conns {
-					found := false
-					for _, ver := range s.setupVersion {
-						if _, verFound := ver.conns[ep]; verFound {
-							found = true
-							break
-						}
-					}
-					if !found {
-						conn.Conn.Close()
-						closeConns = append(closeConns, ep)
-					}
-				}
-				for _, ep := range closeConns {
-					delete(s.conns, ep)
-				}
-				s.mu.Unlock()
-
-			case api.ServiceConfigAction_Add:
-				// Lookup all endpoint connections.
-				// If any are new then create them and add them.
-				setup := &Setup{
-					lookup: make(map[string]Resource, len(sc.List)*10),
-					conns:  make(map[string]*Connection, len(sc.List)),
-				}
-
-				s.mu.Lock()
-				for _, sce := range sc.List {
-					conn, found := s.conns[sce.Endpoint]
-					if !found {
-						cc, err := grpc.DialContext(ctx, sce.Endpoint, grpc.WithInsecure())
-						if err != nil {
-							fmt.Printf("Failed to dial rpc %q: %v\n", sce.Endpoint, err)
-							continue
-						}
-						conn = &Connection{
-							Endpoint: sce.Endpoint,
-							Conn:     cc,
-						}
-						s.conns[sce.Endpoint] = conn
-					}
-					setup.conns[sce.Endpoint] = conn
-					for _, res := range sce.Resource {
-						setup.lookup[res.Name] = Resource{
-							Conn:     conn,
-							Resource: res,
-						}
-					}
-				}
-				s.setupVersion[sc.Version] = setup
-				s.mu.Unlock()
-			}
-			fmt.Printf("got %v\n", sc.Version)
+	grantedName := sb.Name + "/login/granted"
+	if res, found := s.service.SPA(grantedName); found {
+		var err error
+		s.loginTemplate, err = s.loginTemplate.Parse(res.Content)
+		if err != nil {
+			fmt.Printf("Unable to parse template %q: %v\n", grantedName, err)
 		}
 	}
 }
@@ -205,34 +115,14 @@ func JSON(v interface{}) string {
 // How do I know if the required resource is a code or configuration? Probably
 // have two different Required field, one for config, one for code.
 
-const serviceName = "solidcoredata.org/base"
-
-var spaBody = map[string]string{
-	serviceName + "/spa/system-menu": widgetMenu,
-}
-
-func (s *ServiceConfig) createConfig() *api.ServiceBundle {
-	c := &api.ServiceBundle{
-		Name: serviceName,
-		Resource: []*api.Resource{
-			{Name: "loader", Type: api.ResourceURL},
-			{Name: "login", Type: api.ResourceURL},
-			{Name: "fetch-ui", Type: api.ResourceURL, Consume: api.ResourceSPACode},
-			{Name: "favicon", Type: api.ResourceURL},
-
-			{Name: "spa/system-menu", Type: api.ResourceSPACode},
-		},
-	}
-	return c
-}
-
 func (s *ServiceConfig) ServeHTTP(ctx context.Context, r *api.HTTPRequest) (*api.HTTPResponse, error) {
+	const serviceName = "solidcoredata.org/base"
+
 	resp := &api.HTTPResponse{}
 	switch r.URL.Path {
 	default:
 		return nil, grpc.Errorf(codes.NotFound, "path %q not found", r.URL.Path)
 	case serviceName + "/loader":
-		resp.ContentType = "text/html"
 		buf := &bytes.Buffer{}
 		c := struct {
 			Next string
@@ -242,37 +132,44 @@ func (s *ServiceConfig) ServeHTTP(ctx context.Context, r *api.HTTPRequest) (*api
 		if err != nil {
 			return nil, err
 		}
-		err = loginGrantedHTML.Execute(buf, c)
+		s.mu.RLock()
+		err = s.loginTemplate.Execute(buf, c)
+		s.mu.RUnlock()
+
 		if err != nil {
 			return nil, err
 		}
+		resp.ContentType = "text/html"
 		resp.Body = buf.Bytes()
 	case serviceName + "/login":
+		resName := serviceName + "/login/none"
+		body, found := s.service.SPA(resName)
+		if !found {
+			return nil, grpc.Errorf(codes.NotFound, "path %q not found", resName)
+		}
 		resp.ContentType = "text/html"
-		resp.Body = loginNoneHTML
+		resp.Body = []byte(body.Content)
 	case serviceName + "/fetch-ui":
 		fmt.Printf("fetch-ui: version=%q\n", r.Version)
-		s.mu.RLock()
-		setup, foundSetup := s.setupVersion[r.Version]
-		s.mu.RUnlock()
+		setup, foundSetup := s.service.ResConn(r.Version)
 
 		if !foundSetup {
 			return nil, fmt.Errorf("unable to find version %s", r.Version)
 		}
 
-		remotes := map[*Connection][]*ReturnItem{}
+		remotes := map[*grpc.ClientConn][]*ReturnItem{}
 		names := r.URL.Query.Values["name"].Value
 
 		// Lookup names in service registry.
 		// Hit all services in parallel and agg all results and respond to client.
 		ret := make([]*ReturnItem, 0, len(names))
 		for _, n := range names {
-			res, resFound := setup.lookup[n]
+			res, resFound := setup[n]
 			if resFound {
 				fmt.Printf("Resource found for %q with config %q\n", n, string(res.Resource.Configuration))
 			} else {
 				fmt.Printf("Resource not found %q\n", n)
-				for name := range setup.lookup {
+				for name := range setup {
 					fmt.Printf("\t%s\n", name)
 				}
 			}
@@ -292,8 +189,8 @@ func (s *ServiceConfig) ServeHTTP(ctx context.Context, r *api.HTTPRequest) (*api
 			}
 			if len(res.Resource.Configuration) > 0 {
 				ri.Body = string(res.Resource.Configuration)
-			} else if body, found := spaBody[res.Resource.Name]; found {
-				ri.Body = body
+			} else if body, found := s.service.SPA(res.Resource.Name); found {
+				ri.Body = body.Content
 			} else {
 				remotes[res.Conn] = append(remotes[res.Conn], ri)
 			}
@@ -304,7 +201,7 @@ func (s *ServiceConfig) ServeHTTP(ctx context.Context, r *api.HTTPRequest) (*api
 			g, ctx := errgroup.WithContext(ctx)
 			for conn, riList := range remotes {
 				riList := riList
-				client := api.NewSPAClient(conn.Conn)
+				client := api.NewSPAClient(conn)
 				g.Go(func() error {
 					list := make([]string, len(riList))
 					for i := 0; i < len(list); i++ {
@@ -359,31 +256,4 @@ func (s *ServiceConfig) ServeHTTP(ctx context.Context, r *api.HTTPRequest) (*api
 		resp.Body = buf.Bytes()
 	}
 	return resp, nil
-}
-
-// FetchUI should watch the FS for changes.
-//
-// First look for a manafest file. Key the file off the executable name, minus any exe extension.
-// The manafest lists the various components that one or more files provides.
-// Watch the manafest file for changes and files referenced from the manafest for changes.
-//
-// There are three mods: relative to source package, relative to executable, and embedded.
-func (s *ServiceConfig) FetchUI(ctx context.Context, req *api.FetchUIRequest) (*api.FetchUIResponse, error) {
-	resp := &api.FetchUIResponse{}
-	for _, name := range req.List {
-		body, found := spaBody[name]
-		if !found {
-			continue
-		}
-		resp.List = append(resp.List, &api.FetchUIItem{Name: name, Body: body})
-	}
-	return resp, nil
-}
-
-func (s *ServiceConfig) watchConfig(ctx context.Context) {
-
-}
-
-func (s *ServiceConfig) Config() chan<- *api.ServiceConfig {
-	return s.config
 }

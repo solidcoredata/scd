@@ -9,7 +9,6 @@ import (
 	"context"
 	"log"
 
-	"github.com/cortesi/moddwatch"
 	"github.com/solidcoredata/scd/api"
 	"github.com/solidcoredata/scd/service"
 )
@@ -26,64 +25,32 @@ import (
 func main() {
 	ctx := context.TODO()
 
-	sc, err := NewServiceConfig("res/scdexample1.jsonnet")
+	s := service.New()
+	sc, err := NewServiceConfig()
 	if err != nil {
 		log.Fatalf("failed to create service config: %v", err)
 	}
-	service.Setup(ctx, sc)
+	s.Setup(ctx, sc)
 }
 
 var _ service.Configration = &ServiceConfig{}
 
-func NewServiceConfig(config string) (*ServiceConfig, error) {
-	s := &ServiceConfig{
-		bundle: make(chan *api.ServiceBundle, 5),
-	}
+func NewServiceConfig() (*ServiceConfig, error) {
+	s := &ServiceConfig{}
 
-	_ = moddwatch.Watch
-
-	var err error
-	s.staticConfig, s.code, err = service.OpenServiceConfiguration(config)
-	if err != nil {
-		return nil, err
-	}
-	s.bundle <- s.staticConfig
 	return s, nil
 }
 
 type ServiceConfig struct {
-	bundle chan *api.ServiceBundle
-
-	staticConfig *api.ServiceBundle
-
-	code map[string]string
+	code map[string]*service.ResourceFile
 }
 
-func (s *ServiceConfig) ServiceBundle() <-chan *api.ServiceBundle {
-	return s.bundle
-}
 func (s *ServiceConfig) HTTPServer() (api.HTTPServer, bool) {
 	return nil, false
 }
 func (s *ServiceConfig) AuthServer() (api.AuthServer, bool) {
 	return nil, false
 }
-func (s *ServiceConfig) SPAServer() (api.SPAServer, bool) {
-	return s, true
-}
+func (s *ServiceConfig) BundleUpdate(sb *api.ServiceBundle) {
 
-func (s *ServiceConfig) FetchUI(ctx context.Context, req *api.FetchUIRequest) (*api.FetchUIResponse, error) {
-	resp := &api.FetchUIResponse{}
-	for _, name := range req.List {
-		body, found := s.code[name]
-		if !found {
-			continue
-		}
-		resp.List = append(resp.List, &api.FetchUIItem{Name: name, Body: body})
-	}
-	return resp, nil
-}
-
-func (s *ServiceConfig) Config() chan<- *api.ServiceConfig {
-	return nil
 }
