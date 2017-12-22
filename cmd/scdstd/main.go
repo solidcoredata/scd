@@ -116,13 +116,11 @@ func JSON(v interface{}) string {
 // have two different Required field, one for config, one for code.
 
 func (s *ServiceConfig) ServeHTTP(ctx context.Context, r *api.HTTPRequest) (*api.HTTPResponse, error) {
-	const serviceName = "solidcoredata.org/base"
-
 	resp := &api.HTTPResponse{}
 	switch r.URL.Path {
 	default:
 		return nil, grpc.Errorf(codes.NotFound, "path %q not found", r.URL.Path)
-	case serviceName + "/loader":
+	case "loader":
 		buf := &bytes.Buffer{}
 		c := struct {
 			Next string
@@ -141,15 +139,15 @@ func (s *ServiceConfig) ServeHTTP(ctx context.Context, r *api.HTTPRequest) (*api
 		}
 		resp.ContentType = "text/html"
 		resp.Body = buf.Bytes()
-	case serviceName + "/login":
-		resName := serviceName + "/login/none"
+	case "login":
+		resName := r.URL.Host + "/login/none"
 		body, found := s.service.SPA(resName)
 		if !found {
 			return nil, grpc.Errorf(codes.NotFound, "path %q not found", resName)
 		}
 		resp.ContentType = "text/html"
 		resp.Body = []byte(body.Content)
-	case serviceName + "/fetch-ui":
+	case "fetch-ui":
 		fmt.Printf("fetch-ui: version=%q\n", r.Version)
 		setup, foundSetup := s.service.ResConn(r.Version)
 
@@ -238,7 +236,7 @@ func (s *ServiceConfig) ServeHTTP(ctx context.Context, r *api.HTTPRequest) (*api
 		resp.ContentType = "application/json"
 		resp.Body, err = json.Marshal(ret)
 		return resp, err
-	case serviceName + "/favicon":
+	case "favicon":
 		var c color.Color
 		switch r.Auth.LoginState {
 		default:

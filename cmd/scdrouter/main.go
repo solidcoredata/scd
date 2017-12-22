@@ -201,8 +201,8 @@ func (s *RouterServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Version: version,
 		Method:  r.Method,
 		URL: &api.URL{
-			Host:  r.URL.Host,
-			Path:  cr.ParentRes.Name, // r.URL.Path,
+			Host:  cr.ParentRes.Service.sb.Name,
+			Path:  cr.ParentRes.Name[len(cr.ParentRes.Service.sb.Name)+1:],
 			Query: api.NewKeyValueList(r.URL.Query()),
 		},
 		ProtoMajor:  int32(r.ProtoMajor),
