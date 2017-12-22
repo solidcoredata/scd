@@ -14,12 +14,12 @@ import (
 )
 
 /*
-	1. Push the configuration fetch into the service.Setup.
-	2. Use res files for all services.
-	3. Add some custom HTTP point to scdexample1.
-	4. Add in a file watch.
-	5. Push router config update.
-	6. Add a hook to the UI to refresh components.
+	1. [x] Push the configuration fetch into the service.Setup.
+	2. [x] Use res files for all services.
+	3. [ ] Add some custom HTTP point to scdexample1.
+	4. [x] Add in a file watch.
+	5. [x] Push router config update.
+	6. [ ] Add a hook to the UI to refresh components.
 */
 
 func main() {

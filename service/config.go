@@ -76,7 +76,7 @@ func NewSCReader(p string) (*SCReader, error) {
 	dir, _ := filepath.Split(pabs)
 
 	ch := make(chan *moddwatch.Mod, 6)
-	watcher, err := moddwatch.Watch(dir, []string{"*.jsonnet", "**/*.html", "**/*.js"}, nil, time.Millisecond*500, ch)
+	watcher, err := moddwatch.Watch(dir, []string{"**/*.*"}, nil, time.Millisecond*500, ch)
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +116,7 @@ func (r *SCReader) open() (*api.ServiceBundle, map[string]*ResourceFile, error) 
 	}
 	v, err := r.vm.EvaluateSnippet(r.configPath, string(bfile))
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("jsonnet eval %q: %v", r.configPath, err)
 	}
 
 	decode := json.NewDecoder(strings.NewReader(v))
