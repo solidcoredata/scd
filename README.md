@@ -159,7 +159,7 @@ Your email will be acknowledged within 72 hours.
 Source code files should not list authors names directly.
 Each file should have a standard header:
 ```
-// Copyright 2017 The Solid Core Data Authors. All rights reserved.
+// Copyright 2018 The Solid Core Data Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 ```
