@@ -34,6 +34,8 @@ local sn = "example-1.solidcoredata.org/app";
 				sn + "/ui/favicon",
 			],
 		},
+		{Name: "proc", Type: ref.Resource.URL, Consume: ref.Resource.Proc},
+		{Name: "p1", Type: ref.Resource.Proc},
 		{Name: "auth/login", Parent: "solidcoredata.org/auth/login", C: ref.C.URL{MapTo: "/api/login"}},
 		{Name: "auth/logout", Parent: "solidcoredata.org/auth/logout", C: ref.C.URL{MapTo: "/api/logout"}},
 		{Name: "auth/endpoint", Parent: "solidcoredata.org/auth/endpoint", C: ref.C.Auth{Area: "System", Environment: "DEV"}},

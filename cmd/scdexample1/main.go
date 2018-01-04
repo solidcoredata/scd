@@ -7,10 +7,13 @@ package main
 
 import (
 	"context"
-	"log"
+	"sync"
 
 	"github.com/solidcoredata/scd/api"
 	"github.com/solidcoredata/scd/service"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 )
 
 /*
@@ -26,31 +29,52 @@ func main() {
 	ctx := context.TODO()
 
 	s := service.New()
-	sc, err := NewServiceConfig()
-	if err != nil {
-		log.Fatalf("failed to create service config: %v", err)
-	}
+	sc := &ServiceConfig{service: s}
 	s.Setup(ctx, sc)
 }
 
 var _ service.Configration = &ServiceConfig{}
 
-func NewServiceConfig() (*ServiceConfig, error) {
-	s := &ServiceConfig{}
-
-	return s, nil
-}
-
 type ServiceConfig struct {
-	code map[string]*service.ResourceFile
+	service *service.Service
+
+	mu sync.RWMutex
+	sb *api.ServiceBundle
 }
 
 func (s *ServiceConfig) HTTPServer() (api.HTTPServer, bool) {
-	return nil, false
+	return s, true
 }
 func (s *ServiceConfig) AuthServer() (api.AuthServer, bool) {
 	return nil, false
 }
 func (s *ServiceConfig) BundleUpdate(sb *api.ServiceBundle) {
+	s.mu.Lock()
+	s.sb = sb
+	s.mu.Unlock()
+}
 
+func (s *ServiceConfig) ServeHTTP(ctx context.Context, r *api.HTTPRequest) (*api.HTTPResponse, error) {
+	resp := &api.HTTPResponse{}
+	switch r.URL.Path {
+	default:
+		return nil, grpc.Errorf(codes.NotFound, "path %q not found", r.URL.Path)
+	case "proc":
+		s.mu.RLock()
+		sb := s.sb
+		s.mu.RUnlock()
+
+		_ = sb
+
+		setup, found := s.service.ResConn(r.Version)
+		if !found {
+			return nil, grpc.Errorf(codes.NotFound, "version %q not found", r.Version)
+		}
+
+		_ = setup
+
+		// sb.Resource[0].
+		// resp.Body
+	}
+	return resp, nil
 }

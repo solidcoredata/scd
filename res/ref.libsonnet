@@ -8,6 +8,8 @@
 		URL: "solidcoredata.org/resource/url",
 		SPACode: "solidcoredata.org/resource/spa-code",
 		Query: "solidcoredata.org/resource/query",
+
+		Proc: "example-1.solidcoredata.org/proc",
 	},
 	
 	LoginState: {
