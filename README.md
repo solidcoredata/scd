@@ -9,6 +9,14 @@ users, move data between the backend and the frontend, and
 a way to create reusable UI components through typed and composable
 UI  configurations.
 
+"A blank sheet of paper is daunting task." Provide 90% of a good, generic, solution.
+
+Provide an integrated solution to expose "The four golden signals":
+ * Latency
+ * Traffic
+ * Errors
+ * Saturation
+
 ## Motivation
 
 Line of business applications can be constructed from base UI
