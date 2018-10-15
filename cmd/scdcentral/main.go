@@ -13,11 +13,23 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 )
 
 func main() {
+	err := run()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "service registration: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	r1 := NewRouter()
 	r2 := NewRouter()
 	svc1 := NewServiceA()
@@ -29,17 +41,19 @@ func main() {
 
 	reg := NewMemoryRegistry()
 
-	sr := NewServiceRegister(reg)
+	sr, err := NewServiceRegister(ctx, reg)
+	if err != nil {
+		return err
+	}
 
-	err := sr.Register(
+	err = sr.Register(ctx,
 		r1, r2,
 		svc1, svc2,
 		auth1, auth2,
 		app1, app2,
 	)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "service registration: %v\n", err)
-		os.Exit(1)
+		return err
 	}
 	select {}
 }

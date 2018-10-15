@@ -59,26 +59,26 @@ type Application struct {
 type Registry interface {
 	NewLease(ctx context.Context, ttl time.Duration) (lease string, err error)
 	UpdateLease(ctx context.Context, lease string) error
-	DeleteLease(ctx context.Context, lease string)
+	DeleteLease(ctx context.Context, lease string) error
 
 	Begin(ctx context.Context) (RegistryTx, error)
-
-	// WatchService blocks until ctx is canceled.
-	WatchService(ctx context.Context, svcs chan []Service) error
-	WatchApplicationVersion(ctx context.Context, av chan []ApplicationVersion) error
-	WatchApplication(ctx context.Context, av chan []Application) error
 }
+
+/*
+ - solidcoredata.org/consumer/solidcoredata.org/resource/auth
+ - solidcoredata.org/consumer/example-1.solidcoredata.org/resource/proc
+
+ - solidcoredata.org/resource/auth/<ip>
+ - example-1.solidcoredata.org/resource/proc/<ip>
+
+ - solidcoredata.org/c/menu-system/example-1.solidcoredata.org/i/funny
+ - example-1.solidcoredata.org/i/funny-ctl ->
+*/
 
 type RegistryTx interface {
 	Commit(ctx context.Context) error
 	Abort()
 
-	// Lease required
-	SetService(lease int64, svc Service) error
-
-	// Lease optional
-	SetApplicationVersion(lease int64, appver ApplicationVersion) error
-
-	// Lease optional
-	SetApplication(lease int64, app Application) error
+	Watch(ctx context.Context, prefix string, changes chan []string) error
+	Set(ctx context.Context, key, value string) error
 }
